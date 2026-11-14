@@ -2631,12 +2631,17 @@ window.__ModuleLoader__.load({
           locale: NS,
         }, Page))
 
-        // A red trash for the sidebar's delete item: the menu row is `danger`, so
-        // this icon inherits the error colour through currentColor — never a hex.
+        // Sidebar menu icons. The trash rides a `danger` row, so it inherits the
+        // error colour through currentColor; the eye sits on a normal row and
+        // keeps the label colour. Never a hex.
         ctx.slots.inject('contextMenu.icon', () => ctx.slots.register({
           name: 'contextMenu.icon',
           key: 'dsh-session-manager.trash',
         }, () => h(Icon, { name: 'trash', size: 16 })))
+        ctx.slots.inject('contextMenu.icon', () => ctx.slots.register({
+          name: 'contextMenu.icon',
+          key: 'dsh-session-manager.hide',
+        }, () => h(Icon, { name: 'eyeOff', size: 16 })))
 
         // ── sidebar context-menu additions (design: preview-states.png ①②) ──
         // Both services are read through the optional lookup on purpose: they are
@@ -2685,6 +2690,7 @@ window.__ModuleLoader__.load({
               return [{
                 id: 'session-manager.hide',
                 label: translate('row.hideWorkspace'),
+                icon: { key: 'dsh-session-manager.hide' },
                 run: async () => {
                   try {
                     rememberHidden(await requestHide(id))

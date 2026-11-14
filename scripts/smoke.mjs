@@ -320,12 +320,13 @@ walk(tree, ({ node }) => {
 if (rightAligned > 0) throw new Error('body cells are still right-aligned: ' + rightAligned)
 console.log('✓ alignment: no right-aligned body cell; header and body both centre')
 
-/* the sidebar delete item ships its own icon slot occupant */
+/* the sidebar menu items ship their own icon slot occupants */
 const iconSlot = bySlot('contextMenu.icon')
-if (iconSlot.length !== 1 || iconSlot[0].options.key !== 'dsh-session-manager.trash') {
-  throw new Error('missing contextMenu.icon registration')
+const iconKeys = iconSlot.map(entry => entry.options.key).sort()
+if (iconSlot.length !== 2 || iconKeys.join(',') !== 'dsh-session-manager.hide,dsh-session-manager.trash') {
+  throw new Error('expected trash and hide icon occupants, got ' + JSON.stringify(iconKeys))
 }
-console.log('✓ menu icon: contextMenu.icon occupant registered')
+console.log('✓ menu icons: ' + iconKeys.length + ' contextMenu.icon occupants registered')
 
 /* interaction contract: a row click toggles that row's check (so a second click
    clears it, ring included) and arrow keys move the cursor without touching the
