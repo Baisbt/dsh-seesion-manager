@@ -154,7 +154,7 @@ const sessions = {
   byId: {
     'session-aaaaaaaa-1': makeSession('session-aaaaaaaa-1', '把默认工作区迁到 D 盘', 'D:\\AI\\DeepSeek Harness', now - 3 * 86400000),
     'session-bbbbbbbb-2': makeSession('session-bbbbbbbb-2', 'EarTrumpet 自启与居中位置调整', 'D:\\AI\\BetterEarTrumpt', now - 3600000, { running: true }),
-    'session-cccccccc-3': makeSession('session-cccccccc-3', '会话管理页面布局与可行性评估', 'D:\\AI\\DSH-plugin\\Session-managent', now - 60000),
+    'session-cccccccc-3': makeSession('session-cccccccc-3', '会话管理页面布局与可行性评估', 'D:\\AI\\DSH-plugin\\dsh-session-manager', now - 60000),
     'session-dddddddd-4': makeSession('session-dddddddd-4', '没有归属的孤儿会话', undefined, now - 8 * 86400000),
   },
   phase: 'ready',
@@ -164,7 +164,7 @@ const workspaces = {
   items: [
     { workspaceId: 'w-1', path: 'D:\\AI\\DeepSeek Harness', title: 'DeepSeek Harness', sessionIds: ['session-aaaaaaaa-1'], createdAt: '', updatedAt: '' },
     { workspaceId: 'w-2', path: 'D:\\AI\\BetterEarTrumpt', title: 'BetterEarTrumpt', sessionIds: ['session-bbbbbbbb-2'], createdAt: '', updatedAt: '' },
-    { workspaceId: 'w-3', path: 'D:\\AI\\DSH-plugin\\Session-managent', title: 'Session-managent', sessionIds: ['session-cccccccc-3'], createdAt: '', updatedAt: '' },
+    { workspaceId: 'w-3', path: 'D:\\AI\\DSH-plugin\\dsh-session-manager', title: 'dsh-session-manager', sessionIds: ['session-cccccccc-3'], createdAt: '', updatedAt: '' },
   ],
   archivedSessionIds: ['session-aaaaaaaa-1'],
   pinnedSessionIds: [],
