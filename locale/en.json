@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Session manager",
+    "description": "Adds a Session manager row to the left sidebar that opens its own page in the main panel. This version delivers the sidebar tab only: the page is intentionally blank until its design is added."
+  }
+}

@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>会话管理 · 布局 B（单栏分组 · 窄宽度更稳）</title>
+<link rel="stylesheet" href="base.css">
+<style>
+  .groupwrap { flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 6px 20px 10px; display: flex; flex-direction: column; }
+  .ghead {
+    position: sticky; top: 0; z-index: 2;
+    display: flex; align-items: center; gap: 8px;
+    height: 34px; padding: 0 8px; margin-top: 6px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-base);
+    color: var(--label-2); font-size: 12.5px;
+  }
+  .ghead .caret { width: 12px; color: var(--label-4); display: grid; place-items: center; }
+  .ghead .caret.open { transform: rotate(90deg); }
+  .ghead .ico { color: var(--label-3); display: grid; place-items: center; }
+  .ghead .path { font-weight: 500; color: var(--label-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ghead .agg { color: var(--label-4); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ghead .sp { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+  .ghead .line { flex: 1 1 auto; height: 1px; background: var(--border-l1); min-width: 12px; }
+
+  .brow {
+    display: grid; grid-template-columns: 22px minmax(0, 1fr) 74px 84px 58px;
+    gap: 10px; align-items: center;
+    padding: 7px 8px 7px 28px; border-radius: var(--radius-sm);
+    color: var(--label-2);
+  }
+  .brow:hover { background: var(--hover); }
+  .brow .sz { display: block; text-align: right; font-size: 12px; color: var(--label-3); font-variant-numeric: tabular-nums; }
+  .brow.on { background: rgba(122, 170, 255, 0.09); }
+  .hint { display: flex; gap: 10px; align-items: center; font-size: 11.5px; color: var(--label-4); padding: 12px 8px 0; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.9 4.4V12a1.4 1.4 0 0 0 1.4 1.4h9.4A1.4 1.4 0 0 0 14.1 12V6.1a1.4 1.4 0 0 0-1.4-1.4H8.2L6.7 3.1H3.3a1.4 1.4 0 0 0-1.4 1.3Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 16 16"><path d="M4.4 2.6h7.2a2.4 2.4 0 0 1 2.4 2.4v3.4a2.4 2.4 0 0 1-2.4 2.4H8.4L6 13.1v-2.3H4.4A2.4 2.4 0 0 1 2 8.4V5a2.4 2.4 0 0 1 2.4-2.4Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 16 16"><circle cx="3.2" cy="8" r="1.15" fill="currentColor"/><circle cx="8" cy="8" r="1.15" fill="currentColor"/><circle cx="12.8" cy="8" r="1.15" fill="currentColor"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7.2" cy="7.2" r="4.2" fill="none" stroke="currentColor" stroke-width="1.25"/><path d="m10.4 10.4 2.6 2.6" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></symbol>
+  <symbol id="i-hide" viewBox="0 0 16 16"><path d="M2.4 8S4.7 4.3 8 4.3 13.6 8 13.6 8 11.3 11.7 8 11.7 2.4 8 2.4 8Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="m3.2 3.2 9.6 9.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 16 16"><path d="m8 2.4 5.6 2.9L8 8.2 2.4 5.3 8 2.4Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="m2.4 8.4 5.6 2.9 5.6-2.9M2.4 11.2l5.6 2.9 5.6-2.9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.2v9.6M3.2 8h9.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.1" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 1.9v1.4M8 12.7v1.4M2.2 8h1.4M12.4 8h1.4M4 4l1 1M11 11l1 1M12 4l-1 1M5 11l-1 1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 16 16"><rect x="2.2" y="2.9" width="11.6" height="2.8" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M3.4 5.7v6.2a1.2 1.2 0 0 0 1.2 1.2h6.8a1.2 1.2 0 0 0 1.2-1.2V5.7M6.4 8.6h3.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 16 16"><path d="M4.4 3.4v9.2M2.3 10.5l2.1 2.1 2.1-2.1M9 5.2h4.6M9 8h3.2M9 10.8h1.9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</defs></svg>
+
+<div class="frame">
+  <aside class="side">
+    <div class="side-brand"><span class="brand-mark">D</span> DeepSeek Harness</div>
+    <div class="nav-row is-new"><span class="glyph"><svg width="15" height="15"><use href="#i-plus"/></svg></span> 新会话</div>
+    <div class="nav-row"><span class="glyph"><svg width="15" height="15"><use href="#i-layers"/></svg></span> 插件</div>
+    <div class="nav-row"><span class="glyph"><svg width="15" height="15"><use href="#i-archive"/></svg></span> 自动化任务</div>
+    <div class="nav-row"><span class="glyph"><svg width="15" height="15"><use href="#i-chat"/></svg></span> 上下文洞察</div>
+    <div class="nav-row is-active"><span class="glyph"><svg width="15" height="15"><use href="#i-folder"/></svg></span> 会话管理</div>
+    <div class="nav-row"><span class="glyph"><svg width="15" height="15"><use href="#i-dots"/></svg></span> 更多</div>
+    <div class="side-label">工作区
+      <span class="tools"><svg width="13" height="13"><use href="#i-search"/></svg><svg width="13" height="13"><use href="#i-plus"/></svg></span>
+    </div>
+    <div class="ws-row"><svg width="14" height="14"><use href="#i-folder"/></svg><span class="name">ALL-TEST</span></div>
+    <div class="ws-row sel"><svg width="14" height="14"><use href="#i-folder"/></svg><span class="name">Session-managent</span></div>
+    <div class="side-foot"><svg width="14" height="14"><use href="#i-settings"/></svg> 设置 <span class="mono muted" style="margin-left:auto">134****64</span></div>
+  </aside>
+
+  <main class="page">
+    <header class="page-head">
+      <div class="page-title">
+        <h1>会话管理</h1>
+        <p class="sub"><b>6</b> 个工作区 · <b>86</b> 个会话 · 占用 <b>775 MB</b></p>
+      </div>
+      <div class="head-actions">
+        <div class="search"><svg width="14" height="14"><use href="#i-search"/></svg> 搜索标题、工作区或会话 ID <span class="key">⌘K</span></div>
+        <span class="select-like"><svg width="12" height="12"><use href="#i-sort"/></svg> 最后活动 <svg width="11" height="11"><use href="#i-chev"/></svg></span>
+      </div>
+    </header>
+
+    <div class="bar">
+      <span class="chip on">全部 <span class="count">86</span></span>
+      <span class="chip">正常 <span class="count">71</span></span>
+      <span class="chip">已归档 <span class="count">15</span></span>
+      <span class="sep-v"></span>
+      <span class="chip">包含已隐藏工作区</span>
+      <div class="right"><span>按工作区分组 · 折叠状态会被记住</span></div>
+    </div>
+
+    <div class="groupwrap">
+      <!-- 分组 1 -->
+      <div class="ghead">
+        <span class="caret open"><svg width="11" height="11"><use href="#i-chev"/></svg></span>
+        <span class="ico"><svg width="14" height="14"><use href="#i-folder"/></svg></span>
+        <span class="path">D:\AI\DSH-plugin\Session-managent</span>
+        <span class="agg">7 会话 · 46 MB</span>
+        <span class="line"></span>
+        <span class="sp"><span class="pill ok"><span class="d"></span>正常</span><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+      <div class="brow on">
+        <span class="cbx on"></span>
+        <span class="session-cell"><span class="name">会话管理页面布局与可行性评估</span><span class="meta">创建 今天 20:01 · 最后活动 刚刚 · <span class="mono">a1f2c9e4</span></span></span>
+        <span class="sz">0.6 MB</span>
+        <span><span class="pill ok"><span class="d"></span>正常</span></span>
+        <span class="row-actions"><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+      <div class="brow on">
+        <span class="cbx on"></span>
+        <span class="session-cell"><span class="name">本项目想要参考 dsh-context 插件做一个侧边栏</span><span class="meta">创建 今天 18:23 · 最后活动 2 小时前 · <span class="mono">fa1edbea</span></span></span>
+        <span class="sz">4.8 MB</span>
+        <span><span class="pill ok"><span class="d"></span>正常</span></span>
+        <span class="row-actions"><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+      <div class="brow">
+        <span class="cbx"></span>
+        <span class="session-cell"><span class="name">解析 dsh-context 侧边栏注册机制</span><span class="meta">创建 今天 19:02 · 最后活动 1 小时前 · <span class="mono">7c31be20</span></span></span>
+        <span class="sz">2.2 MB</span>
+        <span><span class="pill ok"><span class="d"></span>正常</span></span>
+        <span class="row-actions"><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+
+      <!-- 分组 2（折叠） -->
+      <div class="ghead">
+        <span class="caret"><svg width="11" height="11"><use href="#i-chev"/></svg></span>
+        <span class="ico"><svg width="14" height="14"><use href="#i-folder"/></svg></span>
+        <span class="path">D:\AI\DeepSeek Harness</span>
+        <span class="agg">34 会话 · 412 MB · 6 个已归档</span>
+        <span class="line"></span>
+        <span class="sp"><span class="pill ok"><span class="d"></span>正常</span><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+
+      <!-- 分组 3 -->
+      <div class="ghead">
+        <span class="caret open"><svg width="11" height="11"><use href="#i-chev"/></svg></span>
+        <span class="ico"><svg width="14" height="14"><use href="#i-folder"/></svg></span>
+        <span class="path">D:\AI\BetterEarTrumpt</span>
+        <span class="agg">12 会话 · 88 MB</span>
+        <span class="line"></span>
+        <span class="sp"><span class="pill ok"><span class="d"></span>正常</span><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+      <div class="brow">
+        <span class="cbx"></span>
+        <span class="session-cell"><span class="name">EarTrumpet 自启与居中位置调整</span><span class="meta">创建 11-13 09:14 · 最后活动 前天 · <span class="mono">9d02fe13</span></span></span>
+        <span class="sz">2.4 MB</span>
+        <span><span class="pill ok"><span class="d"></span>正常</span></span>
+        <span class="row-actions"><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+      <div class="brow">
+        <span class="cbx"></span>
+        <span class="session-cell"><span class="name">查找 windows 系统 · 自启项残留</span><span class="meta">创建 11-12 21:40 · 最后活动 11-13 · <span class="mono">6ee0b4c8</span></span></span>
+        <span class="sz">1.9 MB</span>
+        <span><span class="pill arch"><span class="d"></span>已归档</span></span>
+        <span class="row-actions"><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+
+      <!-- 分组 4 -->
+      <div class="ghead">
+        <span class="caret open"><svg width="11" height="11"><use href="#i-chev"/></svg></span>
+        <span class="ico"><svg width="14" height="14"><use href="#i-folder"/></svg></span>
+        <span class="path">D:\AI\ALL-TEST</span>
+        <span class="agg">21 会话 · 186 MB</span>
+        <span class="line"></span>
+        <span class="sp"><span class="pill ok"><span class="d"></span>正常</span><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+      <div class="brow">
+        <span class="cbx"></span>
+        <span class="session-cell"><span class="name">ALL-TEST 插件加载失败排查</span><span class="meta">创建 11-11 14:20 · 最后活动 3 天前 · <span class="mono">31c7aa90</span></span></span>
+        <span class="sz">5.5 MB</span>
+        <span><span class="pill ok"><span class="d"></span>正常</span></span>
+        <span class="row-actions"><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+      <div class="brow">
+        <span class="cbx"></span>
+        <span class="session-cell"><span class="name">沙箱只读模式下的写入验证</span><span class="meta">创建 11-10 20:12 · 最后活动 11-11 · <span class="mono">b2204c71</span></span></span>
+        <span class="sz">3.2 MB</span>
+        <span><span class="pill ok"><span class="d"></span>正常</span></span>
+        <span class="row-actions"><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+
+      <!-- 分组 5 -->
+      <div class="ghead">
+        <span class="caret open"><svg width="11" height="11"><use href="#i-chev"/></svg></span>
+        <span class="ico"><svg width="14" height="14"><use href="#i-folder"/></svg></span>
+        <span class="path">默认工作区</span>
+        <span class="agg">9 会话 · 31 MB</span>
+        <span class="line"></span>
+        <span class="sp"><span class="pill ok"><span class="d"></span>正常</span><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+      <div class="brow">
+        <span class="cbx"></span>
+        <span class="session-cell"><span class="name">把默认工作区迁到 D 盘</span><span class="meta">创建 11-09 10:02 · 最后活动 5 天前 · <span class="mono">0af41d27</span></span></span>
+        <span class="sz">1.2 MB</span>
+        <span><span class="pill arch"><span class="d"></span>已归档</span></span>
+        <span class="row-actions"><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+      <div class="brow">
+        <span class="cbx"></span>
+        <span class="session-cell"><span class="name">默认工作区的默认 cwd 该放哪</span><span class="meta">创建 11-07 15:22 · 最后活动 11-07 · <span class="mono">8c02e5b1</span></span></span>
+        <span class="sz">2.1 MB</span>
+        <span><span class="pill ok"><span class="d"></span>正常</span></span>
+        <span class="row-actions"><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+
+      <!-- 已隐藏分组 -->
+      <div class="ghead" style="color:var(--warn)">
+        <span class="caret"><svg width="11" height="11"><use href="#i-chev"/></svg></span>
+        <span class="ico"><svg width="14" height="14"><use href="#i-hide"/></svg></span>
+        <span class="path" style="color:var(--label-2)">D:\AI\legacy-notes</span>
+        <span class="agg">3 会话 · 12 MB</span>
+        <span class="line"></span>
+        <span class="sp"><span class="pill hidden"><span class="d"></span>已隐藏</span><span class="icon-btn"><svg width="14" height="14"><use href="#i-dots"/></svg></span></span>
+      </div>
+
+      <div class="hint">
+        <span class="tag" style="border:1px solid var(--border-l1);border-radius:4px;padding:1px 5px">示意稿</span>
+        <span>分组头吸顶；折叠状态持久化；不选中工作区时按工作区分组展示全部会话</span>
+      </div>
+    </div>
+
+    <div class="selbar">
+      <span class="n">已选择 <span>2</span> 个会话 · 5.4 MB</span>
+      <span class="sep"></span>
+      <button class="btn"><svg width="13" height="13"><use href="#i-archive"/></svg> 归档</button>
+      <button class="btn ghost-danger"><svg width="13" height="13"><use href="#i-dots"/></svg> 更多</button>
+      <div class="right"><button class="btn">取消选择</button></div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

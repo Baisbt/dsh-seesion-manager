@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>会话管理 · 交互状态（侧栏菜单增量 / 永久删除 / 批量更新标题）</title>
+<link rel="stylesheet" href="base.css">
+<style>
+  .sheet { grid-template-rows: auto auto; }
+  .stage.tall { min-height: 250px; align-items: center; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-pin" viewBox="0 0 16 16"><path d="M9.4 2.6 13.4 6.6M8.2 3.8 4.6 5.2 2.8 7l6.2 6.2 1.8-1.8 1.4-3.6 3.4-3.4-2.9-2.9Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="m5.6 10.4-2.8 2.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 16 16"><path d="M10.3 2.9 13.1 5.7 5.6 13.2l-3.1.6.6-3.1 7.2-7.8Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 16 16"><circle cx="4.6" cy="3.6" r="1.6" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="4.6" cy="12.4" r="1.6" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="11.4" cy="6.4" r="1.6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M4.6 5.2v5.6M11.4 8v.4a2.4 2.4 0 0 1-2.4 2.4H4.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5.6" y="2.6" width="8" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M10.4 12.2v.6a1.6 1.6 0 0 1-1.6 1.6H4.2a1.6 1.6 0 0 1-1.6-1.6V6.4a1.6 1.6 0 0 1 1.6-1.6h.6" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+  <symbol id="i-external" viewBox="0 0 16 16"><path d="M9.2 2.8h4v4M13.2 2.8 7.6 8.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.4 9.6v2.6a1.4 1.4 0 0 1-1.4 1.4H3.8a1.4 1.4 0 0 1-1.4-1.4V5a1.4 1.4 0 0 1 1.4-1.4h2.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 16 16"><rect x="2.2" y="2.9" width="11.6" height="2.8" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M3.4 5.7v6.2a1.2 1.2 0 0 0 1.2 1.2h6.8a1.2 1.2 0 0 0 1.2-1.2V5.7M6.4 8.6h3.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 16 16"><path d="M2.8 4.4h10.4M6.2 4.4V3a1 1 0 0 1 1-1h1.6a1 1 0 0 1 1 1v1.4M4.2 4.4l.6 8a1.2 1.2 0 0 0 1.2 1.1h4a1.2 1.2 0 0 0 1.2-1.1l.6-8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-hide" viewBox="0 0 16 16"><path d="M2.4 8S4.7 4.3 8 4.3 13.6 8 13.6 8 11.3 11.7 8 11.7 2.4 8 2.4 8Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="m3.2 3.2 9.6 9.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.9 4.4V12a1.4 1.4 0 0 0 1.4 1.4h9.4A1.4 1.4 0 0 0 14.1 12V6.1a1.4 1.4 0 0 0-1.4-1.4H8.2L6.7 3.1H3.3a1.4 1.4 0 0 0-1.4 1.3Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="m3.4 8.4 3 3 6.2-6.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2.6 14 13H2L8 2.6Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M8 6.4v3.2M8 11.4v.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 3.1v2.6h-2.6" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 4.8V8l2.2 1.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+</defs></svg>
+
+<div class="sheet">
+  <!-- 1. 侧栏会话行菜单 -->
+  <section class="card">
+    <h2>① 侧栏「会话行 ⋯」菜单 <span class="note">在现有菜单末尾追加一项</span></h2>
+    <div class="stage">
+      <div class="menu">
+        <div class="menu-item"><span class="ico"><svg width="14" height="14"><use href="#i-pin"/></svg></span> 置顶会话</div>
+        <div class="menu-item"><span class="ico"><svg width="14" height="14"><use href="#i-pencil"/></svg></span> 重命名 <span class="kbd">Ctrl + Alt + G</span></div>
+        <div class="menu-item"><span class="ico"><svg width="14" height="14"><use href="#i-branch"/></svg></span> 分叉会话 <span class="kbd">Ctrl + Alt + F</span></div>
+        <div class="menu-sep"></div>
+        <div class="menu-item"><span class="ico"><svg width="14" height="14"><use href="#i-copy"/></svg></span> 复制 Session ID</div>
+        <div class="menu-item"><span class="ico"><svg width="14" height="14"><use href="#i-external"/></svg></span> 在应用中打开 <span class="kbd">›</span></div>
+        <div class="menu-sep"></div>
+        <div class="menu-item"><span class="ico"><svg width="14" height="14"><use href="#i-archive"/></svg></span> 归档会话 <span class="kbd">Ctrl + Shift + A</span></div>
+        <div class="menu-item danger hl"><span class="ico"><svg width="14" height="14"><use href="#i-trash"/></svg></span> 删除会话… <span class="new">新增</span></div>
+      </div>
+    </div>
+    <div class="legend"><span>保持原有图标列与快捷键右对齐；危险项用 <code>--dsw-alias-state-error-primary</code>，位置固定在最后一项。</span></div>
+  </section>
+
+  <!-- 2. 侧栏工作区菜单 -->
+  <section class="card">
+    <h2>② 侧栏「工作区 ⋯」菜单 <span class="note">在「删除工作区」之前插入</span></h2>
+    <div class="stage">
+      <div class="menu">
+        <div class="menu-item"><span class="ico"><svg width="14" height="14"><use href="#i-pencil"/></svg></span> 重命名</div>
+        <div class="menu-item"><span class="ico"><svg width="14" height="14"><use href="#i-folder"/></svg></span> 在文件夹显示</div>
+        <div class="menu-sep"></div>
+        <div class="menu-item hl"><span class="ico"><svg width="14" height="14"><use href="#i-hide"/></svg></span> 隐藏工作区 <span class="new">新增</span></div>
+        <div class="menu-item"><span class="ico"><svg width="14" height="14"><use href="#i-clock"/></svg></span> 清理 30 天前的归档 <span class="new">新增</span></div>
+        <div class="menu-sep"></div>
+        <div class="menu-item danger"><span class="ico"><svg width="14" height="14"><use href="#i-trash"/></svg></span> 删除工作区</div>
+      </div>
+    </div>
+    <div class="legend"><span>隐藏＝从侧栏与本插件移除，不删磁盘目录、不动会话归属；「删除工作区」保持 DSH 原行为（会话移交未分类）。</span></div>
+  </section>
+
+  <!-- 3. 永久删除确认 -->
+  <section class="card">
+    <h2>③ 永久删除二次确认 <span class="note">不可恢复，必须显式确认</span></h2>
+    <div class="stage tall">
+      <div class="dialog">
+        <h3><svg width="16" height="16" style="color:var(--error)"><use href="#i-warn"/></svg> 永久删除 2 个会话？</h3>
+        <p>会话日志将从磁盘删除，投影缓存随之失效。此操作<strong style="color:var(--label-1)">无法恢复</strong>，也不会进入回收站或「已归档」。</p>
+        <div class="list">
+          <div class="li"><svg width="12" height="12"><use href="#i-folder"/></svg> 本项目想要参考 dsh-context 插件做一个侧边栏 <span class="sz">4.8 MB</span></div>
+          <div class="li"><svg width="12" height="12"><use href="#i-folder"/></svg> 会话管理页面布局与可行性评估 <span class="sz">0.6 MB</span></div>
+        </div>
+        <div class="warn"><svg width="13" height="13" style="flex:none;margin-top:2px"><use href="#i-warn"/></svg><span>若这些会话正在其他窗口运行，删除会立即中断它们。</span></div>
+        <label class="checkline"><input type="checkbox" checked style="accent-color:var(--accent-solid)"> 我已备份需要保留的内容</label>
+        <div class="actions">
+          <button class="btn">取消</button>
+          <button class="btn danger-solid">永久删除</button>
+        </div>
+      </div>
+    </div>
+    <div class="legend"><span>勾选项未选中时按钮禁用；批量删除超过 10 个时追加输入会话数量确认。</span></div>
+  </section>
+
+  <!-- 4. 批量更新标题 -->
+  <section class="card">
+    <h2>④ 批量更新标题 <span class="note">逐个会话独立生成，互不影响</span></h2>
+    <div class="stage tall" style="align-items:stretch;flex-direction:column;gap:12px">
+      <div class="progress"><i style="width:66%"></i></div>
+      <div class="tasks">
+        <div class="task"><svg width="13" height="13" class="muted"><use href="#i-folder"/></svg><span class="nm">本项目想要参考 dsh-context 插件做一个侧边栏</span><span class="st done"><svg width="12" height="12"><use href="#i-check"/></svg> 已完成</span></div>
+        <div class="task"><svg width="13" height="13" class="muted"><use href="#i-folder"/></svg><span class="nm">解析 dsh-context 侧边栏注册机制</span><span class="st run"><svg width="12" height="12"><use href="#i-clock"/></svg> 生成中…</span></div>
+        <div class="task"><svg width="13" height="13" class="muted"><use href="#i-folder"/></svg><span class="nm">会话管理页面布局与可行性评估</span><span class="st fail">失败 · <u>重试</u></span></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="legend">2 / 3 完成 · 失败不影响其它会话</span>
+        <span style="margin-left:auto;display:flex;gap:8px"><button class="btn">全部重试</button><button class="btn">关闭</button></span>
+      </div>
+    </div>
+    <div class="legend"><span>标题写入会话日志后，列表行与侧栏行同时刷新；用户手动改过标题的会话默认不覆盖，可在设置里放开。</span></div>
+  </section>
+</div>
+</body>
+</html>

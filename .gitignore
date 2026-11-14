@@ -1,0 +1,10 @@
+# Dependencies (this bundle has none, but keep the rule for local experiments)
+node_modules/
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+*.log
+
+# Local scratch
+.tmp/

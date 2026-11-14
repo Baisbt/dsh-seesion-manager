@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+  <defs>
+    <!-- Cuts a transparent gap around the front bubble so the two shapes stay
+         readable on both light and dark tiles instead of relying on a color
+         step the themes would invert. -->
+    <mask id="dsm-session-gap" maskUnits="userSpaceOnUse" x="0" y="0" width="36" height="36">
+      <rect x="0" y="0" width="36" height="36" fill="#FFFFFF"/>
+      <path d="M9.2 12.5H21.8A3.8 3.8 0 0 1 25.6 16.3V21.6A3.8 3.8 0 0 1 21.8 25.4H15.4L11.6 28.6V25.4H9.2A3.8 3.8 0 0 1 5.4 21.6V16.3A3.8 3.8 0 0 1 9.2 12.5Z"
+            fill="none" stroke="#000000" stroke-width="3.2" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <rect x="13.5" y="6.8" width="16.5" height="11.6" rx="3.6" fill="#5C7FE0" mask="url(#dsm-session-gap)"/>
+  <path d="M9.2 12.5H21.8A3.8 3.8 0 0 1 25.6 16.3V21.6A3.8 3.8 0 0 1 21.8 25.4H15.4L11.6 28.6V25.4H9.2A3.8 3.8 0 0 1 5.4 21.6V16.3A3.8 3.8 0 0 1 9.2 12.5Z" fill="#2E6FF2"/>
+  <path d="M10.4 17.2H20.6" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+  <path d="M10.4 20.7H17.2" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+</svg>
