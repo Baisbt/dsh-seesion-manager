@@ -1421,6 +1421,34 @@ window.__ModuleLoader__.load({
         throw new Error('client service unavailable: ' + name)
       }
 
+      /**
+       * Re-pull the Host-authoritative Session list.
+       *
+       * The sidebar, the workspace tree and this page all read one client
+       * store, and that store only changes on a pull or on a Host frame. A
+       * permanent delete removes files underneath the Host, so no frame ever
+       * arrives: without this pull the row survives in the store and, because
+       * the registry no longer claims it, the sidebar re-renders it under
+       * 「未分组」 instead of dropping it. Pulling after a delete (and from
+       * 刷新) is what actually removes it from the native sidebar too.
+       */
+      const pullSessionList = () => {
+        let list
+        try {
+          list = service('sessions')
+        } catch {
+          return
+        }
+        if (list === null || typeof list.refresh !== 'function') return
+        try {
+          void Promise.resolve(list.refresh()).catch(() => {
+            // A failed pull leaves the list as it was; nothing is lost.
+          })
+        } catch {
+          // A Host without the RPC: the next page load reconciles.
+        }
+      }
+
       return function SessionManagerPage(props) {
         // Use the framework's locale seat when present (it re-renders on a language
         // switch); otherwise the plugin-bound translator. Interpolation is ours
@@ -1724,6 +1752,10 @@ window.__ModuleLoader__.load({
         const refreshNow = useCallback(async () => {
           const ids = Array.isArray(sessions.ids) ? sessions.ids : []
           setBusy(true)
+          // The list itself may be stale (a deletion from another window or a
+          // file removed outside DSH); re-pull it together with the numbers so
+          // one button repairs both.
+          pullSessionList()
           try {
             const value = ids.length === 0 ? {} : await requestStats(ids, { refresh: true })
             setHostStats(value)
@@ -2140,6 +2172,9 @@ window.__ModuleLoader__.load({
                 for (const id of result.deleted) next.add(id)
                 return next
               })
+              // Drop the rows from the shared Session store as well, or the
+              // native sidebar keeps listing them under 「未分组」.
+              pullSessionList()
               showToast(t('toast.deleted', { n: result.deleted.length }))
             }
             if (result.failed.length > 0) {
@@ -2605,9 +2640,10 @@ window.__ModuleLoader__.load({
 
     return {
       name: 'dsh-session-manager',
-      // Hard client dependencies: the page archives sessions and opens them.
+      // Hard client dependencies: the page archives sessions, opens them, and
+      // re-pulls the Session list after a permanent delete.
       // Cordis refuses `ctx.<service>` for a dependency this list omits.
-      inject: ['slots', 'locale', 'workspaces', 'uiWorkspace'],
+      inject: ['slots', 'locale', 'workspaces', 'uiWorkspace', 'sessions'],
 
       apply(ctx) {
         for (const locale of Object.keys(DICTIONARIES)) {

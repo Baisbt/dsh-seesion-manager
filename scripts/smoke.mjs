@@ -75,6 +75,10 @@ globalThis.window = {
     setItem: (key, value) => { store.set(key, String(value)) },
     removeItem: key => { store.delete(key) },
   },
+  setTimeout: () => 1,
+  clearTimeout: () => {},
+  setInterval: () => 1,
+  clearInterval: () => {},
 }
 globalThis.document = undefined
 const require = name => {
@@ -115,9 +119,18 @@ const slots = {
 }
 
 const effects = []
+/** The client Session service: the list the sidebar and this page share. */
+let listRefreshes = 0
+const sessionList = {
+  refresh() { listRefreshes += 1; return Promise.resolve() },
+}
 const ctx = {
   effect(callback, label) { const dispose = callback(); effects.push({ label, dispose }); return () => {} },
-  get(name) { return name === 'locale' ? locale : undefined },
+  get(name) {
+    if (name === 'locale') return locale
+    if (name === 'sessions') return sessionList
+    return undefined
+  },
   locale,
   slots,
 }
@@ -128,7 +141,7 @@ plugin.apply(ctx)
    A service read without a matching `inject` entry makes Cordis throw
    "cannot get property … without inject" at click time, so pin the list here. */
 const declared = new Set(Array.isArray(plugin.inject) ? plugin.inject : [])
-for (const required of ['slots', 'locale', 'workspaces', 'uiWorkspace']) {
+for (const required of ['slots', 'locale', 'workspaces', 'uiWorkspace', 'sessions']) {
   if (!declared.has(required)) throw new Error('inject is missing a service the page reads: ' + required)
 }
 console.log('✓ inject: ' + Array.from(declared).join(', '))
@@ -604,5 +617,73 @@ hookIndex = 0
 treeLive = Page(liveProps)
 if (leafNodes(treeLive).length !== 0) throw new Error('the head toggle must close every workspace again')
 console.log('✓ tree: row click folds both ways, one head toggle, double-click opens (' + leaves.length + ' leaves)')
+
+/* ── deleting a session must also re-pull the shared Session list ──
+   That store only changes on a Pull or on a Host frame, and a permanent delete
+   removes files underneath the Host — so no frame ever arrives. Without the
+   pull the row survives in the store and, because the workspace registry no
+   longer claims it, the native sidebar re-renders it under 「未分组」: exactly
+   the bug this check pins. */
+const deleteRequests = []
+globalThis.fetch = (url, options) => {
+  const body = options && typeof options.body === 'string' ? JSON.parse(options.body) : {}
+  deleteRequests.push({ url: String(url), body })
+  const payload = String(url).endsWith('/delete')
+    ? { ok: true, value: { deleted: body.ids || [], failed: [] } }
+    : { ok: true, value: {} }
+  return Promise.resolve({ ok: true, status: 200, json: async () => payload })
+}
+
+store.clear()
+currentHooks = []
+hookIndex = 0
+let deleteTree = Page(liveProps)
+const firstRow = (() => {
+  let found = null
+  walk(deleteTree, ({ node }) => {
+    if (found !== null || node === undefined || node.props === undefined) return
+    if (/(^|\s)dsm-row(\s|$)/.test(String(node.props.className || ''))) found = node
+  })
+  return found
+})()
+if (firstRow === null) throw new Error('no row to delete')
+firstRow.props.onClick()
+hookIndex = 0
+deleteTree = Page(liveProps)
+
+const pickFirst = predicate => {
+  let found = null
+  walk(deleteTree, ({ node }) => {
+    if (found !== null || node === undefined || node.props === undefined) return
+    if (predicate(node)) found = node
+  })
+  return found
+}
+const batchDelete = pickFirst(node => node.props.className === 'dsm-btn is-danger')
+if (batchDelete === null) throw new Error('the batch bar offers no delete button')
+batchDelete.props.onClick()
+hookIndex = 0
+deleteTree = Page(liveProps)
+
+const ackBox = pickFirst(node => node.props.type === 'checkbox' && typeof node.props.onChange === 'function')
+if (ackBox === null || ackBox.props.checked !== false) throw new Error('the delete dialog offers no unacked confirmation')
+ackBox.props.onChange({ target: { checked: true } })
+hookIndex = 0
+deleteTree = Page(liveProps)
+
+const refreshesBefore = listRefreshes
+const confirmButton = pickFirst(node => node.props.className === 'dsm-btn is-solid-danger')
+if (confirmButton === null) throw new Error('the delete dialog has no confirm button')
+if (confirmButton.props.disabled !== false) throw new Error('the confirmed dialog must enable its confirm button')
+await confirmButton.props.onClick()
+
+if (deleteRequests.filter(entry => entry.url.endsWith('/delete')).length !== 1) {
+  throw new Error('the confirmation must post exactly one delete request')
+}
+if (deleteRequests[0].body.ids.length !== 1) throw new Error('the delete request must carry the checked row')
+if (listRefreshes !== refreshesBefore + 1) {
+  throw new Error('a permanent delete must re-pull the Session list (refreshes ' + refreshesBefore + ' → ' + listRefreshes + ')')
+}
+console.log('✓ delete: one request, then the shared Session list is re-pulled')
 
 console.log('\nsmoke: OK')
