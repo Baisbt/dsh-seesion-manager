@@ -1,6 +1,8 @@
 # Bundle patch layer: this row loads the package's main entry as the Host half.
 # The `dsh.client` block in package.json makes the web app load ./client.js as
 # the browser half, which owns every piece of UI this plugin shows.
+# The row id matches the package name; the slot keys the client registers stay
+# short (`session-manager`), the way the host names its own panels.
 - insert:
-    - id: session-manager
+    - id: dsh-session-manager
       name: dsh-session-manager
