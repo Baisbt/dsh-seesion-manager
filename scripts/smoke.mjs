@@ -501,31 +501,108 @@ if (distributeButton === null || typeof distributeButton.props.onClick !== 'func
 }
 console.log('✓ columns: name-length split offered in the column panel')
 
-/* the tree keeps double-click to jump to the conversation */
+/* ── the tree: clicking a workspace row folds it open, clicking again folds it
+   shut, the caret is decoration, and the head carries one toggle instead of two
+   buttons. Double-click on a leaf still jumps to the conversation. ── */
+store.delete('dsh-session-manager:expanded-workspaces:v1')
+
+const workspaceNodes = rendered => {
+  const found = []
+  walk(rendered, ({ node }) => {
+    if (node === undefined || node.props === undefined) return
+    if (!/(^|\s)dsm-node(\s|$)/.test(String(node.props.className || ''))) return
+    if (typeof node.props['aria-expanded'] === 'boolean') found.push(node)
+  })
+  return found
+}
+const leafNodes = rendered => {
+  const found = []
+  walk(rendered, ({ node }) => {
+    if (node === undefined || node.props === undefined) return
+    if (/(^|\s)dsm-leaf(\s|$)/.test(String(node.props.className || ''))) found.push(node)
+  })
+  return found
+}
+const rowCount = rendered => {
+  let count = 0
+  walk(rendered, ({ node }) => {
+    if (node !== undefined && node.props && /(^|\s)dsm-row(\s|$)/.test(String(node.props.className || ''))) count += 1
+  })
+  return count
+}
+/** The tree head must offer exactly one expand/collapse control. */
+const headButtons = rendered => {
+  let head = null
+  walk(rendered, ({ node }) => {
+    if (head === null && node !== undefined && node.props && node.props.className === 'dsm-tree-head') head = node
+  })
+  if (head === null) throw new Error('no tree head rendered')
+  const stack = (head.children || []).find(child => child !== null && child !== undefined
+    && child.props && child.props.className === 'sp')
+  return stack === undefined ? [] : (stack.children || [])
+}
+
 currentHooks = []
 hookIndex = 0
 let treeLive = Page(liveProps)
-let workspaceCaret = null
-walk(treeLive, ({ node }) => {
-  if (workspaceCaret !== null || node === undefined || node.props === undefined) return
-  if (!/(^|\s)dsm-node(\s|$)/.test(String(node.props.className || ''))) return
-  const kids = node.children || []
-  if (kids[0] && kids[0].props && typeof kids[0].props.onClick === 'function') workspaceCaret = kids[0]
-})
-if (workspaceCaret === null) throw new Error('no workspace node with an expand caret')
-workspaceCaret.props.onClick({ stopPropagation() {} })
+if (workspaceNodes(treeLive).length === 0) throw new Error('no workspace node rendered')
+if (workspaceNodes(treeLive).some(node => node.props['aria-expanded'])) {
+  throw new Error('the tree must start folded when nothing was remembered')
+}
+if (leafNodes(treeLive).length !== 0) throw new Error('a folded tree must not render session leaves')
+const rowsBefore = rowCount(treeLive)
+
+const firstNode = workspaceNodes(treeLive)[0]
+const caret = (firstNode.children || [])[0] || null
+if (caret === null || !/(^|\s)dsm-caret(\s|$)/.test(String(caret.props.className || ''))) {
+  throw new Error('a workspace row must still start with its caret')
+}
+if (typeof caret.props.onClick === 'function') {
+  throw new Error('the caret must not be a second hit area — the row owns the toggle')
+}
+
+// click 1: opens this workspace and narrows the list to it
+firstNode.props.onClick()
 hookIndex = 0
 treeLive = Page(liveProps)
-let leaves = 0
-let opening = 0
-walk(treeLive, ({ node }) => {
-  if (node === undefined || node.props === undefined) return
-  if (!/(^|\s)dsm-leaf(\s|$)/.test(String(node.props.className || ''))) return
-  leaves += 1
-  if (typeof node.props.onDoubleClick === 'function') opening += 1
-})
-if (leaves === 0) throw new Error('expanding a workspace must render its session leaves')
-if (opening !== leaves) throw new Error('every tree leaf must open its session on double-click')
-console.log('✓ tree: ' + leaves + ' leaves render, double-click opens the session')
+const opened = workspaceNodes(treeLive).filter(node => node.props['aria-expanded'])
+if (opened.length !== 1) throw new Error('clicking a workspace must open exactly that one, got ' + opened.length)
+if (leafNodes(treeLive).length === 0) throw new Error('an open workspace must render its session leaves')
+const rowsAfter = rowCount(treeLive)
+if (rowsAfter >= rowsBefore) throw new Error('clicking a workspace must still narrow the list (' + rowsBefore + ' → ' + rowsAfter + ')')
+
+// click 2: the same row folds shut again
+workspaceNodes(treeLive)[0].props.onClick()
+hookIndex = 0
+treeLive = Page(liveProps)
+if (workspaceNodes(treeLive).some(node => node.props['aria-expanded'])) {
+  throw new Error('a second click on a workspace must fold it again')
+}
+if (leafNodes(treeLive).length !== 0) throw new Error('folding a workspace must drop its leaves')
+
+// the head toggle: one button, label opposite to the tree's current state
+let buttons = headButtons(treeLive)
+if (buttons.length !== 1) throw new Error('the tree head must offer one expand/collapse button, got ' + buttons.length)
+const labelOf = node => collectText(node).join('').trim()
+if (labelOf(buttons[0]) !== '展开全部') throw new Error('a folded tree must offer 展开全部, got ' + labelOf(buttons[0]))
+buttons[0].props.onClick()
+hookIndex = 0
+treeLive = Page(liveProps)
+const allOpen = workspaceNodes(treeLive)
+if (allOpen.length === 0 || allOpen.some(node => !node.props['aria-expanded'])) {
+  throw new Error('the head toggle must open every workspace')
+}
+buttons = headButtons(treeLive)
+if (labelOf(buttons[0]) !== '折叠全部') throw new Error('an open tree must offer 折叠全部, got ' + labelOf(buttons[0]))
+const leaves = leafNodes(treeLive)
+if (leaves.length === 0) throw new Error('expanding everything must render the leaves')
+if (leaves.some(leaf => typeof leaf.props.onDoubleClick !== 'function')) {
+  throw new Error('every tree leaf must open its session on double-click')
+}
+buttons[0].props.onClick()
+hookIndex = 0
+treeLive = Page(liveProps)
+if (leafNodes(treeLive).length !== 0) throw new Error('the head toggle must close every workspace again')
+console.log('✓ tree: row click folds both ways, one head toggle, double-click opens (' + leaves.length + ' leaves)')
 
 console.log('\nsmoke: OK')

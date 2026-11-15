@@ -493,7 +493,8 @@ window.__ModuleLoader__.load({
   padding: 2px 8px 8px; color: var(--dsw-alias-label-caption); font-size: 12px;
 }
 .dsm-tree-head .sp { margin-left: auto; display: flex; gap: 8px; }
-.dsm-tree-head button { border: 0; background: none; padding: 0; font: inherit; color: var(--dsw-alias-label-caption); cursor: pointer; }
+.dsm-tree-head button { border: 0; background: none; padding: 0; font: inherit; color: var(--dsw-alias-label-caption); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; }
+.dsm-tree-head button svg { flex: none; }
 .dsm-tree-head button:hover { color: var(--dsw-alias-label-primary); }
 
 .dsm-node {
@@ -2343,6 +2344,9 @@ window.__ModuleLoader__.load({
           }
         }, [activeId, listRows, moveCursor, openSession, scrollRowIntoView, toggleSelection])
         const isFiltered = status !== 'all' || query.trim() !== '' || includeHidden || range !== 'all' || sizeBand !== 'all'
+        /** Whether any workspace is currently unfolded — drives the single
+            tree-head toggle, which always offers the opposite of this. */
+        const expandedAny = groups.some(group => group.key !== '' && expandedIds.has(group.key))
 
         return h('div', { className: 'dsm-page', 'data-dsh-panel': PANEL_ID, 'data-scheme': colorScheme, style: { colorScheme } },
 
@@ -2383,8 +2387,15 @@ window.__ModuleLoader__.load({
             h('section', { className: 'dsm-tree', 'aria-label': t('tree.header') },
               h('div', { className: 'dsm-tree-head' }, t('tree.header'),
                 h('span', { className: 'sp' },
-                  h('button', { type: 'button', onClick: () => setAllExpanded(false) }, t('action.collapseAll')),
-                  h('button', { type: 'button', onClick: () => setAllExpanded(true) }, t('action.expandAll')))),
+                  // One button instead of two: it names the move it will make,
+                  // so there is never a dead "collapse all" when all is shut.
+                  h('button', {
+                    type: 'button',
+                    title: expandedAny ? t('action.collapseAll') : t('action.expandAll'),
+                    onClick: () => setAllExpanded(!expandedAny),
+                  },
+                    h(Icon, { name: 'chev', size: 11, style: expandedAny ? { transform: 'rotate(90deg)' } : undefined }),
+                    expandedAny ? t('action.collapseAll') : t('action.expandAll')))),
               h('button', {
                 type: 'button',
                 className: 'dsm-node' + (scope === 'all' ? ' is-sel' : ''),
@@ -2402,13 +2413,14 @@ window.__ModuleLoader__.load({
                   h('button', {
                     type: 'button',
                     className: 'dsm-node' + (scope === group.key ? ' is-sel' : '') + (group.hidden ? ' is-hidden' : ''),
-                    onClick: () => setScope(group.key),
+                    // The whole row is the target: one click selects the scope
+                    // and flips this workspace open, the next click folds it
+                    // back. The caret is decoration now, not a second hit area.
+                    'aria-expanded': open,
+                    onClick: () => { setScope(group.key); toggleExpanded(group.key) },
                     onContextMenu: event => workspaceMenu(event, group),
                   },
-                    h('span', {
-                      className: 'dsm-caret' + (open ? ' is-open' : ''),
-                      onClick: event => { event.stopPropagation(); toggleExpanded(group.key) },
-                    }, h(Icon, { name: 'chev', size: 11 })),
+                    h('span', { className: 'dsm-caret' + (open ? ' is-open' : '') }, h(Icon, { name: 'chev', size: 11 })),
                     h('span', { className: 'dsm-node-ico' }, h(Icon, { name: group.hidden ? 'eyeOff' : 'folder', size: 14 })),
                     h('span', { className: 'dsm-node-label', title: group.path || group.label }, group.path || group.label),
                     h('span', { className: 'dsm-node-agg' },
