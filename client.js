@@ -2255,6 +2255,14 @@ window.__ModuleLoader__.load({
             if (result.failed.length > 0) {
               const first = result.failed[0]
               showToast(t('toast.deleteFailed', { n: result.failed.length, reason: deleteReason(first) }))
+              // A refused live session means this row's state is stale: ask the
+              // Host again so it switches to 打开中 instead of inviting another
+              // click through a route that just explained itself.
+              if (result.failed.some(item => item.code === 'session-live')) {
+                requestStats(result.failed.map(item => item.id), { refresh: true })
+                  .then(value => setHostStats(previous => ({ ...previous, ...value })))
+                  .catch(() => { /* the toast already explained the outcome */ })
+              }
             }
             setSelection(new Set())
             setDeleteTarget(null)
