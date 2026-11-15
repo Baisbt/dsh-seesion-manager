@@ -190,15 +190,24 @@ window.__ModuleLoader__.load({
         'status.normal': '正常',
         'status.archived': '已归档',
         'status.running': '运行中',
+        'status.live': '打开中',
+        'status.liveHint': '该会话仍被本窗口占用；DSH 没有关闭入口，重启后可删除',
         'status.hidden': '已隐藏',
         'row.open': '打开会话',
         'row.openHint': '双击打开',
         'row.archive': '归档',
         'row.unarchive': '取消归档',
         'row.delete': '永久删除',
+        'row.deleteLive': '该会话仍在本窗口打开，DSH 没有关闭入口；重启 DSH 后才能删除',
         'row.refreshTitle': '更新标题',
         'row.hideWorkspace': '隐藏工作区',
         'row.restoreWorkspace': '恢复显示',
+        'error.sessionLive': '该会话仍在本窗口打开，需重启 DSH 后再删',
+        'error.noLog': '找不到该会话的日志文件，可能已经被删掉了',
+        'error.outsideRoot': '拒绝删除 sessions 目录之外的文件',
+        'error.statFailed': '读取会话文件失败：{reason}',
+        'error.deleteFailed': '删除文件失败：{reason}',
+        'error.badRequest': '请求格式不对：{reason}',
         'batch.selected': '已选择 {n} 个会话',
         'batch.archive': '归档',
         'batch.unarchive': '取消归档',
@@ -229,6 +238,8 @@ window.__ModuleLoader__.load({
         'delete.cancel': '取消',
         'toast.deleted': '已永久删除 {n} 个会话',
         'toast.deleteFailed': '{n} 个会话未删除：{reason}',
+        'toast.deleteBlocked': '{n} 个会话仍在本窗口打开，无法删除；重启 DSH 后再试',
+        'toast.deleteSkipped': '已跳过 {n} 个正在打开的会话',
         'toast.deleteBusy': '正在删除…',
         'toast.refreshed': '已重新测量 {n} 个会话',
         'toast.refreshFailed': '重新测量失败：{reason}',
@@ -300,15 +311,24 @@ window.__ModuleLoader__.load({
         'status.normal': 'Active',
         'status.archived': 'Archived',
         'status.running': 'Running',
+        'status.live': 'Open',
+        'status.liveHint': 'This window still holds the session; DSH has no close action, so restart to delete it',
         'status.hidden': 'Hidden',
         'row.open': 'Open session',
         'row.openHint': 'Double-click to open',
         'row.archive': 'Archive',
         'row.unarchive': 'Unarchive',
         'row.delete': 'Delete permanently',
+        'row.deleteLive': 'This session is still open in this window and DSH cannot close it; restart DSH to delete it',
         'row.refreshTitle': 'Refresh title',
         'row.hideWorkspace': 'Hide workspace',
         'row.restoreWorkspace': 'Show workspace',
+        'error.sessionLive': 'The session is still open in this window; restart DSH before deleting it',
+        'error.noLog': 'No log file was found for this session; it may already be gone',
+        'error.outsideRoot': 'Refused to delete a directory outside the sessions root',
+        'error.statFailed': 'Could not read the session files: {reason}',
+        'error.deleteFailed': 'Could not delete the files: {reason}',
+        'error.badRequest': 'The request was malformed: {reason}',
         'batch.selected': '{n} selected',
         'batch.archive': 'Archive',
         'batch.unarchive': 'Unarchive',
@@ -339,6 +359,8 @@ window.__ModuleLoader__.load({
         'delete.cancel': 'Cancel',
         'toast.deleted': 'Deleted {n} sessions permanently',
         'toast.deleteFailed': '{n} sessions were not deleted: {reason}',
+        'toast.deleteBlocked': '{n} sessions are still open in this window and cannot be deleted; restart DSH and try again',
+        'toast.deleteSkipped': 'Skipped {n} open sessions',
         'toast.deleteBusy': 'Deleting…',
         'toast.refreshed': 'Re-measured {n} sessions',
         'toast.refreshFailed': 'Re-measuring failed: {reason}',
@@ -758,6 +780,9 @@ window.__ModuleLoader__.load({
 .dsm-pill .d { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .dsm-pill.is-ok { color: var(--dsw-alias-state-success-primary); background: rgba(34,197,94,.1); border-color: rgba(34,197,94,.22); }
 .dsm-pill.is-run { color: var(--dsw-alias-state-business-primary); background: rgba(122,170,255,.12); border-color: rgba(122,170,255,.24); }
+/* 打开中 is a state, not an alarm: the same hue as 运行中, hollow so the two
+   never read as the same thing. */
+.dsm-pill.is-open { color: var(--dsw-alias-state-business-primary); background: transparent; border-color: rgba(122,170,255,.34); }
 .dsm-pill.is-arch { color: var(--dsw-alias-label-tertiary); background: rgba(255,255,255,.05); border-color: var(--dsw-alias-border-l1); }
 .dsm-pill.is-hidden { color: var(--dsw-alias-state-warn-primary); background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.24); }
 
@@ -771,6 +796,8 @@ window.__ModuleLoader__.load({
 .dsm-ico-btn:disabled { opacity: .35; cursor: not-allowed; }
 .dsm-ico-btn.is-danger:hover:not(:disabled) { color: var(--dsw-alias-state-error-primary); background: var(--dsw-alias-interactive-bg-hover-danger); }
 .dsm-row .dsm-actions .dsm-ico-btn { opacity: 1; }
+/* A disabled affordance must still look disabled inside a row. */
+.dsm-row .dsm-actions .dsm-ico-btn:disabled { opacity: .3; }
 
 /* batch bar */
 .dsm-batch {
@@ -1228,8 +1255,9 @@ window.__ModuleLoader__.load({
           }, h(Icon, { name: 'refresh', size: 13 }), t('action.refresh'))))
     }
 
-    function StatusPill({ t, summary, archived }) {
+    function StatusPill({ t, summary, archived, live }) {
       if (summary.running) return h('span', { className: 'dsm-pill is-run' }, h('span', { className: 'd' }), t('status.running'))
+      if (live) return h('span', { className: 'dsm-pill is-open', title: t('status.liveHint') }, h('span', { className: 'd' }), t('status.live'))
       if (archived) return h('span', { className: 'dsm-pill is-arch' }, h('span', { className: 'd' }), t('status.archived'))
       return h('span', { className: 'dsm-pill is-ok' }, h('span', { className: 'd' }), t('status.normal'))
     }
@@ -1613,6 +1641,24 @@ window.__ModuleLoader__.load({
           return facts !== null && typeof facts.bytes === 'number' ? facts.bytes : null
         }, [factsOf])
 
+        /**
+         * Whether this process still holds the session open.
+         *
+         * Two sources, because neither alone is enough: the Host's `live` flag
+         * covers every attachment (including one this window cannot see), while
+         * the client's own `retainedBy.mainView` count changes the instant a
+         * conversation is opened, before the numbers are re-measured. Either one
+         * means the Host will refuse the delete — its log writer holds the file —
+         * so the row says so instead of failing at the confirmation.
+         */
+        const isLive = useCallback(summary => {
+          const facts = factsOf(summary)
+          if (facts !== null && facts.live === true) return true
+          const retained = summary && summary.retainedBy
+          return retained !== null && typeof retained === 'object'
+            && typeof retained.mainView === 'number' && retained.mainView > 0
+        }, [factsOf])
+
         const createdOf = useCallback(summary => {
           const facts = factsOf(summary)
           return facts !== null && typeof facts.createdAt === 'number' ? facts.createdAt : null
@@ -1960,6 +2006,7 @@ window.__ModuleLoader__.load({
           event.preventDefault()
           event.stopPropagation()
           const archived = archivedSet.has(summary.id)
+          const live = isLive(summary)
           const items = [
             { id: 'open', label: t('row.open'), icon: 'open' },
             { id: 'refreshTitle', label: t('row.refreshTitle'), icon: 'pencil', disabled: true, hint: pendingHint },
@@ -1967,13 +2014,13 @@ window.__ModuleLoader__.load({
               ? { id: 'unarchive', label: t('row.unarchive'), icon: 'unarchive' }
               : { id: 'archive', label: t('row.archive'), icon: 'archive' },
             '-',
-            { id: 'delete', label: t('row.delete'), icon: 'trash', danger: true },
+            { id: 'delete', label: t('row.delete'), icon: 'trash', danger: true, disabled: live, hint: live ? t('row.deleteLive') : undefined },
           ]
           setMenu({
             x: event.clientX, y: event.clientY, items,
             context: { kind: 'session', summary, group },
           })
-        }, [archivedSet, pendingHint, t])
+        }, [archivedSet, isLive, pendingHint, t])
 
         const workspaceMenu = useCallback((event, group) => {
           event.preventDefault()
@@ -1992,6 +2039,10 @@ window.__ModuleLoader__.load({
         }, [t])
 
         const selectedIds = useMemo(() => visible.map(row => row.summary.id).filter(id => selection.has(id)), [selection, visible])
+        /** Selected rows the Host can actually delete; open ones are left out. */
+        const deletableIds = useMemo(
+          () => visible.filter(row => selection.has(row.summary.id) && !isLive(row.summary)).map(row => row.summary.id),
+          [isLive, selection, visible])
         const selectedBytes = useMemo(() => {
           let sum = 0
           let known = 0
@@ -2150,15 +2201,39 @@ window.__ModuleLoader__.load({
           window.addEventListener('pointerup', onUp)
         }, [columns, flexId, translate, visibleColumns])
 
-        /** Open the delete confirmation with the titles and sizes in hand. */
+        /** Turn a Host delete failure into a sentence the user can act on. */
+        const deleteReason = useCallback(failure => {
+          const code = failure && failure.code
+          const detail = failure && typeof failure.message === 'string' ? failure.message : ''
+          if (code === 'session-live') return t('error.sessionLive')
+          if (code === 'no-log') return t('error.noLog')
+          if (code === 'outside-root') return t('error.outsideRoot')
+          if (code === 'stat-failed') return t('error.statFailed', { reason: detail })
+          if (code === 'delete-failed') return t('error.deleteFailed', { reason: detail })
+          return detail || String(code)
+        }, [t])
+
+        /**
+         * Open the delete confirmation with the titles and sizes in hand.
+         *
+         * Sessions this process still holds open are filtered out first: their
+         * log writer owns the file, so the Host refuses and DSH has no way to
+         * close them — offering the dialog would only end in that error.
+         */
         const askDelete = useCallback(ids => {
           const wanted = new Set(ids)
-          setDeleteTarget(visible
-            .filter(row => wanted.has(row.summary.id))
-            .map(row => ({ id: row.summary.id, title: row.summary.displayTitle, bytes: sizeOf(row.summary) })))
+          const rows = visible.filter(row => wanted.has(row.summary.id))
+          const open = rows.filter(row => !isLive(row.summary))
+          const blocked = rows.length - open.length
+          if (open.length === 0) {
+            showToast(t('toast.deleteBlocked', { n: blocked }))
+            return
+          }
+          if (blocked > 0) showToast(t('toast.deleteSkipped', { n: blocked }))
+          setDeleteTarget(open.map(row => ({ id: row.summary.id, title: row.summary.displayTitle, bytes: sizeOf(row.summary) })))
           setDeleteAck(false)
           setDeleteCount('')
-        }, [sizeOf, visible])
+        }, [isLive, showToast, sizeOf, t, visible])
 
         const confirmDelete = useCallback(async () => {
           const target = deleteTarget
@@ -2179,7 +2254,7 @@ window.__ModuleLoader__.load({
             }
             if (result.failed.length > 0) {
               const first = result.failed[0]
-              showToast(t('toast.deleteFailed', { n: result.failed.length, reason: first.message || first.code }))
+              showToast(t('toast.deleteFailed', { n: result.failed.length, reason: deleteReason(first) }))
             }
             setSelection(new Set())
             setDeleteTarget(null)
@@ -2188,7 +2263,7 @@ window.__ModuleLoader__.load({
           } finally {
             setBusy(false)
           }
-        }, [deleteTarget, showToast, t])
+        }, [deleteReason, deleteTarget, showToast, t])
 
         /**
          * Menu dispatch. Declared after the mutation helpers so a first render
@@ -2271,22 +2346,29 @@ window.__ModuleLoader__.load({
                 bytes !== null ? formatBytes(bytes) : t('unknown'))
             }
             case 'status':
-              return h('span', { key: column.id }, h(StatusPill, { t, summary, archived }))
+              return h('span', { key: column.id }, h(StatusPill, { t, summary, archived, live: isLive(summary) }))
             case 'actions':
-              return h('span', { key: column.id, className: 'dsm-actions' },
-                h('button', {
-                  type: 'button', className: 'dsm-ico-btn', title: t('row.open'),
-                  onClick: () => openSession(summary.id),
-                }, h(Icon, { name: 'open', size: 14 })),
-                h('button', {
-                  type: 'button', className: 'dsm-ico-btn',
-                  title: archived ? t('row.unarchive') : t('row.archive'),
-                  onClick: () => (archived ? unarchiveSessions([summary.id]) : archiveSessions([summary.id])),
-                }, h(Icon, { name: archived ? 'unarchive' : 'archive', size: 14 })),
-                h('button', {
-                  type: 'button', className: 'dsm-ico-btn is-danger', title: t('row.delete'),
-                  onClick: () => askDelete([summary.id]),
-                }, h(Icon, { name: 'trash', size: 14 })))
+              {
+                const live = isLive(summary)
+                return h('span', { key: column.id, className: 'dsm-actions' },
+                  h('button', {
+                    type: 'button', className: 'dsm-ico-btn', title: t('row.open'),
+                    onClick: () => openSession(summary.id),
+                  }, h(Icon, { name: 'open', size: 14 })),
+                  h('button', {
+                    type: 'button', className: 'dsm-ico-btn',
+                    title: archived ? t('row.unarchive') : t('row.archive'),
+                    onClick: () => (archived ? unarchiveSessions([summary.id]) : archiveSessions([summary.id])),
+                  }, h(Icon, { name: archived ? 'unarchive' : 'archive', size: 14 })),
+                  h('button', {
+                    type: 'button', className: 'dsm-ico-btn is-danger',
+                    // An open session cannot be deleted: the Host still owns its
+                    // log file, and DSH offers no way to close it short of a restart.
+                    disabled: live,
+                    title: live ? t('row.deleteLive') : t('row.delete'),
+                    onClick: () => { if (!live) askDelete([summary.id]) },
+                  }, h(Icon, { name: 'trash', size: 14 })))
+              }
             default:
               return h('span', { key: column.id })
           }
@@ -2568,7 +2650,9 @@ window.__ModuleLoader__.load({
                     }, h(Icon, { name: 'unarchive', size: 13 }), t('batch.unarchive'))
                     : null,
                   h('button', {
-                    type: 'button', className: 'dsm-btn is-danger', disabled: busy,
+                    type: 'button', className: 'dsm-btn is-danger',
+                    disabled: busy || deletableIds.length === 0,
+                    title: deletableIds.length === 0 ? t('row.deleteLive') : undefined,
                     onClick: () => askDelete(selectedIds),
                   }, h(Icon, { name: 'trash', size: 13 }), t('row.delete')),
                   h('span', { className: 'sp' },

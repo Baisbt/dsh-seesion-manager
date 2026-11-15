@@ -9,7 +9,7 @@
  * plain JSON envelope:
  *
  *     POST /api/dsh-session-manager/stats   { ids: string[] }
- *     200  { ok: true, value: { [id]: { createdAt, bytes, logBytes, cacheBytes, dir } } }
+ *     200  { ok: true, value: { [id]: { createdAt, bytes, logBytes, cacheBytes, dir, live } } }
  *     500  { ok: false, error: { code, message } }
  *
  * Size policy (the user asked for it): `bytes` = the whole session directory
@@ -17,8 +17,9 @@
  * documents under `storages/session_projcache/sessions/`. `logBytes` and
  * `cacheBytes` are reported separately so the page can explain the split.
  *
- * Read-only: nothing here writes session data. Deleting sessions is deliberately
- * absent until the action channel and its confirmation flow are reviewed.
+ * `live` marks a session this process still holds open. It is answered fresh on
+ * every request: the page disables its delete action for those rows instead of
+ * letting the user run into the refusal.
  */
 import { readdir, rm, stat } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
@@ -130,14 +131,24 @@ async function projectionCacheSize(id) {
 
 /**
  * Collect one session's facts.
+ *
+ * `live` is answered on every call instead of being cached with the numbers: a
+ * session enters and leaves the live store as the window opens and closes it,
+ * and the page uses this flag to tell the user why a delete will be refused.
+ *
  * @param ctx - Host context.
  * @param id - Session id.
  * @param refresh - When true the cached numbers are ignored and re-measured.
- * @returns `{ createdAt, bytes, logBytes, cacheBytes, dir }`.
+ * @returns `{ createdAt, bytes, logBytes, cacheBytes, dir, live }`.
  */
 async function sessionFacts(ctx, id, refresh = false) {
+  /** Whether this process still holds the session (open conversation or a
+      running agent). Deleting its files underneath that writer cannot work. */
+  const live = ctx.sessions.get(id) !== undefined
   const cached = cache.get(id)
-  if (refresh !== true && cached !== undefined && Date.now() - cached.at < CACHE_TTL_MS) return cached.value
+  if (refresh !== true && cached !== undefined && Date.now() - cached.at < CACHE_TTL_MS) {
+    return { ...cached.value, live }
+  }
 
   const snapshot = await ctx.sessionPersistence.stat(id)
   const createdAt = snapshot?.header?.createdAt ?? null
@@ -154,7 +165,7 @@ async function sessionFacts(ctx, id, refresh = false) {
     dir,
   }
   cache.set(id, { at: Date.now(), value })
-  return value
+  return { ...value, live }
 }
 
 /**
@@ -206,7 +217,11 @@ function json(status, payload) {
  */
 async function deleteSession(ctx, id) {
   if (ctx.sessions.get(id) !== undefined) {
-    return { id, ok: false, code: 'session-live', message: 'session is open in this window; close it first' }
+    // DSH has no "close session" action: once a window has opened a session its
+    // agent (and the open log writer) lives until this process exits. The log is
+    // also locked, so removing it would fail or corrupt it — refuse and let the
+    // page explain that a restart is the way in.
+    return { id, ok: false, code: 'session-live', message: 'session is still open in this process; restart DSH to delete it' }
   }
   let snapshot
   try {

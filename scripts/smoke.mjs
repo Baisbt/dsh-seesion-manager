@@ -686,4 +686,103 @@ if (listRefreshes !== refreshesBefore + 1) {
 }
 console.log('✓ delete: one request, then the shared Session list is re-pulled')
 
+/* ── an open session cannot be deleted, and the row says so ──
+   DSH keeps an opened session's agent (and its log writer) alive until the
+   process exits, so the Host refuses the delete. The page must not offer the
+   action at all — the raw refusal is what this pins. */
+const OPEN_ID = 'session-cccccccc-3'
+const openSessions = {
+  ...sessions,
+  byId: {
+    ...sessions.byId,
+    [OPEN_ID]: { ...sessions.byId[OPEN_ID], retainedBy: { mainView: 1 } },
+  },
+}
+const openProps = { ...liveProps, useSessions: selector => selector(openSessions) }
+
+currentHooks = []
+hookIndex = 0
+let openTree = Page(openProps)
+const openRow = (() => {
+  let found = null
+  walk(openTree, ({ node }) => {
+    if (found !== null || node === undefined || node.props === undefined) return
+    if (node.props['data-sid'] === OPEN_ID) found = node
+  })
+  return found
+})()
+if (openRow === null) throw new Error('the open session has no row')
+
+const pillOf = node => collectText(node).join('').trim()
+const statusPill = (() => {
+  let found = null
+  walk(openRow, ({ node }) => {
+    if (found !== null || node === undefined || node.props === undefined) return
+    if (/(^|\s)dsm-pill(\s|$)/.test(String(node.props.className || ''))) found = node
+  })
+  return found
+})()
+if (statusPill === null || pillOf(statusPill) !== '打开中') {
+  throw new Error('an open session must read 打开中, got ' + (statusPill === null ? 'no pill' : pillOf(statusPill)))
+}
+if (String(statusPill.props.className).indexOf('is-open') === -1) throw new Error('the open pill needs its own class')
+
+const trashButton = (() => {
+  let found = null
+  walk(openRow, ({ node }) => {
+    if (found !== null || node === undefined || node.props === undefined) return
+    if (/dsm-ico-btn/.test(String(node.props.className || '')) && /is-danger/.test(String(node.props.className || ''))) found = node
+  })
+  return found
+})()
+if (trashButton === null) throw new Error('the open row has no delete button')
+if (trashButton.props.disabled !== true) throw new Error('the open row must disable its delete button')
+if (String(trashButton.props.title).indexOf('重启') === -1) throw new Error('the disabled delete must explain the restart')
+
+// the row menu offers the same item, disabled with the same reason
+openRow.props.onContextMenu({ preventDefault() {}, stopPropagation() {}, clientX: 10, clientY: 10 })
+hookIndex = 0
+openTree = Page(openProps)
+let menuDelete = null
+walk(openTree, ({ node }) => {
+  if (menuDelete !== null || node === undefined || node.props === undefined) return
+  if (node.props.role === 'menuitem' && /is-danger/.test(String(node.props.className || ''))) menuDelete = node
+})
+if (menuDelete === null) throw new Error('the row menu lost its delete item')
+if (menuDelete.props.disabled !== true) throw new Error('the menu delete item must be disabled for an open session')
+
+// selecting only the open row leaves the batch delete inert
+let openRowNode = null
+walk(openTree, ({ node }) => {
+  if (openRowNode !== null || node === undefined || node.props === undefined) return
+  if (node.props['data-sid'] === OPEN_ID) openRowNode = node
+})
+openRowNode.props.onClick()
+hookIndex = 0
+openTree = Page(openProps)
+const requestsBefore = deleteRequests.length
+const pickIn = (treeNode, predicate) => {
+  let found = null
+  walk(treeNode, ({ node }) => {
+    if (found !== null || node === undefined || node.props === undefined) return
+    if (predicate(node)) found = node
+  })
+  return found
+}
+const openBatch = pickIn(openTree, node => node.props.className === 'dsm-btn is-danger')
+if (openBatch === null || openBatch.props.disabled !== true) {
+  throw new Error('the batch delete must be disabled when only open sessions are selected')
+}
+openBatch.props.onClick()
+hookIndex = 0
+openTree = Page(openProps)
+let dialog = null
+walk(openTree, ({ node }) => {
+  if (dialog !== null || node === undefined || node.props === undefined) return
+  if (String(node.props.className || '') === 'dsm-dialog') dialog = node
+})
+if (dialog !== null) throw new Error('an open session must not reach the confirmation dialog')
+if (deleteRequests.length !== requestsBefore) throw new Error('an open session must not be sent to the Host')
+console.log('✓ open session: 打开中 pill, delete disabled in row/menu/batch, never reaches the Host')
+
 console.log('\nsmoke: OK')
