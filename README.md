@@ -80,7 +80,7 @@ DeepSeek Harness（DSH）左侧栏的一个选项卡：把**所有工作区和�
 在 **插件** 面板里添加插件，粘贴仓库地址：
 
 ```
-github:Baisbt/dsh-seesion-manager
+github:Baisbt/dsh-session-manager
 ```
 
 装好后在插件列表里启用 `dsh-session-manager`，新会话中生效。
