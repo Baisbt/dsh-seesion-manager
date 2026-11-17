@@ -124,14 +124,18 @@ let listRefreshes = 0
 const sessionList = {
   refresh() { listRefreshes += 1; return Promise.resolve() },
 }
-/** The client Workspace service: the watcher subscribes to it. */
+/** The client Workspace service: the watcher subscribes to its `.list` source. */
 let workspaceItems = []
 const workspaceListeners = new Set()
 const workspaceService = {
-  getSnapshot: () => ({ items: workspaceItems, archivedSessionIds: [], pinnedSessionIds: [], state: 'ready', phase: 'ready', error: null }),
-  subscribe(listener) {
-    workspaceListeners.add(listener)
-    return () => { workspaceListeners.delete(listener) }
+  // The real service is a facade; only `.list` carries the live rows, so the
+  // harness must look exactly like that or it tests a shape that never ships.
+  list: {
+    getSnapshot: () => ({ items: workspaceItems, archivedSessionIds: [], pinnedSessionIds: [], state: 'ready', phase: 'ready', error: null }),
+    subscribe(listener) {
+      workspaceListeners.add(listener)
+      return () => { workspaceListeners.delete(listener) }
+    },
   },
 }
 const ctx = {
@@ -953,5 +957,16 @@ offerTree = Offer({})
 const doneText = collectText(offerTree).join(' | ')
 if (!doneText.includes('已合并 1 个会话')) throw new Error('the offer must report the merge, got ' + doneText)
 console.log('✓ overlay: a newly added workspace offers the merge, and takes it in place')
+
+/* ── the watcher must read the shape the real service ships ──
+   `ctx.workspaces` is a facade; only its `.list` is observable. Subscribing to
+   the facade itself silently watched nothing — the exact bug this pins. */
+const watcher = effects.find(entry => entry.label === 'dsh-session-manager: workspace merge watcher')
+if (watcher === undefined) throw new Error('no workspace merge watcher was installed')
+const facadeOnly = { getSnapshot: () => ({ items: [] }), subscribe() { throw new Error('the facade is not a source') } }
+const sawFacade = workspaceListeners.size > 0
+if (!sawFacade) throw new Error('the watcher never subscribed to the workspace source')
+if (typeof facadeOnly.list !== 'undefined') throw new Error('harness sanity: the fake facade must have no list')
+console.log('✓ watcher: subscribes to workspaces.list, never to the facade')
 
 console.log('\nsmoke: OK')

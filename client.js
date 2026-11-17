@@ -3185,11 +3185,14 @@ window.__ModuleLoader__.load({
          */
         ctx.effect(() => {
           const workspaces = typeof ctx.get === 'function' ? ctx.get('workspaces') : undefined
-          if (workspaces === undefined || typeof workspaces.subscribe !== 'function') return () => {}
+          // The service itself is a facade; its live rows sit on `.list`
+          // (`{ getSnapshot, subscribe }`), which is the only observable part.
+          const source = workspaces !== undefined && workspaces !== null ? workspaces.list : undefined
+          if (source === undefined || source === null || typeof source.subscribe !== 'function') return () => {}
           const seen = new Set()
           let primed = false
           const inspect = () => {
-            const snapshot = typeof workspaces.getSnapshot === 'function' ? workspaces.getSnapshot() : null
+            const snapshot = typeof source.getSnapshot === 'function' ? source.getSnapshot() : null
             const items = snapshot !== null && Array.isArray(snapshot.items) ? snapshot.items : []
             if (primed !== true) {
               for (const item of items) seen.add(item.workspaceId)
@@ -3205,7 +3208,7 @@ window.__ModuleLoader__.load({
               mergeOffers.push({ workspace: item, records })
             }
           }
-          const unsubscribe = workspaces.subscribe(inspect)
+          const unsubscribe = source.subscribe(inspect)
           inspect()
           return () => unsubscribe()
         }, 'dsh-session-manager: workspace merge watcher')
