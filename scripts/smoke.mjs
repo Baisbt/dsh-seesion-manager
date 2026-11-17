@@ -785,4 +785,97 @@ if (dialog !== null) throw new Error('an open session must not reach the confirm
 if (deleteRequests.length !== requestsBefore) throw new Error('an open session must not be sent to the Host')
 console.log('✓ open session: 打开中 pill, delete disabled in row/menu/batch, never reaches the Host')
 
+/* ── a hidden record whose folder is a workspace again asks before merging ──
+   `create(path)` reuses whatever owns the path, so restoring such a record is
+   really a merge into a workspace the user built separately. It has to be asked,
+   not silently performed. */
+const restoreBodies = []
+globalThis.fetch = (url, options) => {
+  const body = options && typeof options.body === 'string' ? JSON.parse(options.body) : {}
+  const target = String(url)
+  let payload = { ok: true, value: {} }
+  if (target.endsWith('/restore')) {
+    restoreBodies.push(body)
+    payload = body.confirmMerge === true
+      ? { ok: true, value: { id: 'w-1', title: 'DeepSeek Harness', attached: 2, merged: true, total: 2 } }
+      : {
+        ok: true,
+        value: {
+          needsConfirm: true,
+          workspace: { id: 'w-1', path: 'D:\\AI\\DeepSeek Harness', title: 'DeepSeek Harness' },
+          candidates: 2,
+        },
+      }
+  }
+  return Promise.resolve({ ok: true, status: 200, json: async () => payload })
+}
+
+store.clear()
+store.set('dsh-session-manager:hidden-workspaces:v2', JSON.stringify([{
+  id: 'w-hidden',
+  path: 'D:\\AI\\DeepSeek Harness',
+  title: 'DeepSeek Harness',
+  sessionIds: ['session-aaaaaaaa-1', 'session-dddddddd-4'],
+}]))
+currentHooks = []
+hookIndex = 0
+let mergeTree = Page(liveProps)
+
+let mergeTag = null
+walk(mergeTree, ({ node }) => {
+  if (mergeTag !== null || node === undefined || node.props === undefined) return
+  if (String(node.props.className || '') === 'dsm-node-tag') mergeTag = node
+})
+if (mergeTag === null) throw new Error('a re-taken path must be marked 将合并 in the hidden group')
+if (collectText(mergeTag).join('') !== '将合并') throw new Error('the merge tag reads ' + collectText(mergeTag).join(''))
+
+let restoreButton = null
+walk(mergeTree, ({ node }) => {
+  if (restoreButton !== null || node === undefined || node.props === undefined) return
+  if (node.props.type === 'button' && collectText(node).join('').trim() === '恢复显示') restoreButton = node
+})
+if (restoreButton === null) throw new Error('the hidden record offers no restore button')
+await restoreButton.props.onClick()
+hookIndex = 0
+mergeTree = Page(liveProps)
+
+let mergeDialog = null
+walk(mergeTree, ({ node }) => {
+  if (mergeDialog !== null || node === undefined || node.props === undefined) return
+  if (String(node.props.className || '') === 'dsm-dialog' && node.props['aria-label'] === '合并到现有工作区？') mergeDialog = node
+})
+if (mergeDialog === null) throw new Error('restoring onto a taken path must ask before merging')
+if (restoreBodies.length !== 1 || restoreBodies[0].confirmMerge === true) {
+  throw new Error('the first restore call must not merge on its own')
+}
+const dialogText = collectText(mergeDialog).join(' | ')
+if (!dialogText.includes('DeepSeek Harness') || !dialogText.includes('2')) {
+  throw new Error('the merge prompt must name the workspace and the session count, got ' + dialogText)
+}
+
+const confirmMergeButton = (() => {
+  let found = null
+  walk(mergeDialog, ({ node }) => {
+    if (found !== null || node === undefined || node.props === undefined) return
+    if (String(node.props.className || '') === 'dsm-btn is-solid') found = node
+  })
+  return found
+})()
+if (confirmMergeButton === null) throw new Error('the merge prompt has no confirm button')
+await confirmMergeButton.props.onClick()
+if (restoreBodies.length !== 2 || restoreBodies[1].confirmMerge !== true) {
+  throw new Error('confirming must send confirmMerge: true')
+}
+const left = JSON.parse(store.get('dsh-session-manager:hidden-workspaces:v2') || '[]')
+if (left.length !== 0) throw new Error('a completed merge must drop the hidden record')
+hookIndex = 0
+mergeTree = Page(liveProps)
+let afterDialog = null
+walk(mergeTree, ({ node }) => {
+  if (afterDialog !== null || node === undefined || node.props === undefined) return
+  if (String(node.props.className || '') === 'dsm-dialog') afterDialog = node
+})
+if (afterDialog !== null) throw new Error('the merge prompt must close after confirming')
+console.log('✓ merge: taken path is marked, restore asks first, confirming sends confirmMerge and clears the record')
+
 console.log('\nsmoke: OK')

@@ -226,6 +226,8 @@ window.__ModuleLoader__.load({
         'toast.failed': '{n} 个操作失败：{reason}',
         'toast.hidden': '已隐藏工作区「{name}」',
         'toast.restored': '已恢复工作区「{name}」',
+        'toast.restoredBulk': '已恢复 {n} 个隐藏工作区',
+        'toast.merged': '已把 {n} 个会话合并到工作区「{name}」',
         'toast.runningBlocked': '「{name}」正在运行，先停止再归档',
         'delete.title': '永久删除 {n} 个会话？',
         'delete.body': '会话日志将从磁盘删除，投影缓存随之失效。此操作无法恢复，也不会进入回收站或「已归档」。',
@@ -236,6 +238,16 @@ window.__ModuleLoader__.load({
         'delete.countWrong': '数量不一致，请重新输入',
         'delete.confirm': '永久删除',
         'delete.cancel': '取消',
+        'tree.willMerge': '将合并',
+        'tree.mergeHint': '这个路径上已经有工作区了；恢复会把这里的会话并进那个工作区',
+        'merge.title': '合并到现有工作区？',
+        'merge.body': '「{path}」上已经有工作区「{name}」。继续会把这条隐藏记录里的 {n} 个会话并入它，并取消归档。',
+        'merge.bodyMany': '选中的 {n} 条隐藏记录里，路径上已经存在工作区；继续会把各自的会话并入现有工作区，并取消归档。',
+        'merge.count': '{n} 个会话',
+        'merge.warn': '原来的工作区标识不会恢复，会话从此归属那个现有工作区。',
+        'merge.warnMany': '原来的工作区标识都不会恢复，会话会分别归属各自的现有工作区。',
+        'merge.confirm': '合并并恢复',
+        'merge.cancel': '取消',
         'toast.deleted': '已永久删除 {n} 个会话',
         'toast.deleteFailed': '{n} 个会话未删除：{reason}',
         'toast.deleteBlocked': '{n} 个会话仍在本窗口打开，无法删除；重启 DSH 后再试',
@@ -347,6 +359,8 @@ window.__ModuleLoader__.load({
         'toast.failed': '{n} operations failed: {reason}',
         'toast.hidden': 'Hidden workspace “{name}”',
         'toast.restored': 'Restored workspace “{name}”',
+        'toast.restoredBulk': 'Restored {n} hidden workspaces',
+        'toast.merged': 'Merged {n} sessions into workspace “{name}”',
         'toast.runningBlocked': '“{name}” is running; stop it before archiving',
         'delete.title': 'Delete {n} sessions permanently?',
         'delete.body': 'The session logs are removed from disk and their projection caches stop working. This cannot be undone and does not go to Archived or a trash.',
@@ -357,6 +371,16 @@ window.__ModuleLoader__.load({
         'delete.countWrong': 'That does not match',
         'delete.confirm': 'Delete permanently',
         'delete.cancel': 'Cancel',
+        'tree.willMerge': 'Will merge',
+        'tree.mergeHint': 'A workspace already owns this path; restoring merges these sessions into it',
+        'merge.title': 'Merge into the existing workspace?',
+        'merge.body': '“{path}” already carries the workspace “{name}”. Continuing attaches this record’s {n} sessions to it and clears their archive state.',
+        'merge.bodyMany': '{n} of the selected hidden records sit on paths that already carry a workspace. Continuing attaches each record’s sessions to that workspace and clears their archive state.',
+        'merge.count': '{n} sessions',
+        'merge.warn': 'The original workspace identity is not restored; the sessions belong to the existing workspace from now on.',
+        'merge.warnMany': 'No original workspace identity is restored; each record’s sessions join its existing workspace.',
+        'merge.confirm': 'Merge and restore',
+        'merge.cancel': 'Cancel',
         'toast.deleted': 'Deleted {n} sessions permanently',
         'toast.deleteFailed': '{n} sessions were not deleted: {reason}',
         'toast.deleteBlocked': '{n} sessions are still open in this window and cannot be deleted; restart DSH and try again',
@@ -561,6 +585,12 @@ window.__ModuleLoader__.load({
 .dsm-tree-sub .sp { margin-left: auto; }
 .dsm-tree-sub button { border: 0; background: none; padding: 0; font: inherit; color: var(--dsw-alias-label-tertiary); cursor: pointer; }
 .dsm-tree-sub button:hover { color: var(--dsw-alias-label-primary); }
+.dsm-node-tag {
+  flex: none; padding: 0 5px; height: 16px; display: inline-flex; align-items: center;
+  border-radius: 999px; font-size: 10.5px; white-space: nowrap;
+  color: var(--dsw-alias-state-business-primary);
+  border: 1px solid rgba(122,170,255,.34);
+}
 
 /* list */
 .dsm-list { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
@@ -710,6 +740,9 @@ window.__ModuleLoader__.load({
 .dsm-dactions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
 .dsm-btn.is-solid-danger { background: var(--dsw-alias-state-error-primary); border-color: transparent; color: #1a0f0f; font-weight: 600; }
 .dsm-btn.is-solid-danger:disabled { opacity: .5; }
+/* A merge is a normal, reversible action: the primary treatment, not the danger one. */
+.dsm-btn.is-solid { background: var(--dsw-alias-state-business-primary); border-color: transparent; color: #10192b; font-weight: 600; }
+.dsm-btn.is-solid:disabled { opacity: .5; }
 .dsm-count-wrong { color: var(--dsw-alias-state-error-primary); font-size: 11.5px; }
 .dsm-thead {
   /* Sticky inside the scroll container, with an opaque band under it: the rows
@@ -1070,6 +1103,29 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Comparable spelling of a workspace path.
+     *
+     * Only used for the "this hidden record's folder is back" hint: the Host
+     * decides the merge itself with `realpath`. Separators and a trailing slash
+     * are the differences that show up in practice, and Windows paths are
+     * case-insensitive.
+     */
+    function pathKey(path) {
+      return String(path || '')
+        .replace(/\//g, '\\')
+        .replace(/\\+$/, '')
+        .toLowerCase()
+    }
+
+    /** Name shown for a stored hidden record in toasts and prompts. */
+    function recordName(record) {
+      if (record === null || typeof record !== 'object') return ''
+      if (typeof record.title === 'string' && record.title.trim()) return record.title
+      if (typeof record.path === 'string' && record.path.length > 0) return workspaceLabel(record.path, '')
+      return record.id || ''
+    }
+
+    /**
      * Split a text into plain runs and `<mark>` runs that match the search, so a
      * hit is visible where it happens instead of only removing rows.
      * @param text - Text to split.
@@ -1149,9 +1205,20 @@ window.__ModuleLoader__.load({
       return postJson('api/dsh-session-manager/hide', { workspaceId })
     }
 
-    /** Ask the Host to re-register a hidden workspace and re-attach its sessions. */
-    function requestRestore(record) {
-      return postJson('api/dsh-session-manager/restore', { record })
+    /**
+     * Ask the Host to bring a hidden workspace back.
+     *
+     * With `confirmMerge` false the Host refuses to touch anything when a
+     * workspace already owns that path and answers `{ needsConfirm: true }`
+     * instead; the page then asks the user whether to merge.
+     * @param record - The stored hidden record.
+     * @param confirmMerge - True once the user agreed to merge into the
+     *   workspace that already exists at the same path.
+     * @returns Either `{ needsConfirm, workspace, candidates }` or
+     *   `{ id, title, attached, merged, total }`.
+     */
+    function requestRestore(record, confirmMerge = false) {
+      return postJson('api/dsh-session-manager/restore', confirmMerge === true ? { record, confirmMerge: true } : { record })
     }
 
     /**
@@ -1434,6 +1501,55 @@ window.__ModuleLoader__.load({
             }, busy ? t('toast.deleteBusy') : t('delete.confirm')))))
     }
 
+    /**
+     * Merge confirmation for hidden records whose folder already carries a
+     * workspace again. Nothing is destructive here, so it needs a plain yes/no
+     * rather than the delete-style acknowledgement — but it must be asked,
+     * because the sessions end up under a workspace the user built separately.
+     */
+    function MergeDialog({ t, plan, busy, onConfirm, onCancel }) {
+      useEffect(() => {
+        if (plan === null) return undefined
+        const onKey = event => { if (event.key === 'Escape') onCancel() }
+        document.addEventListener('keydown', onKey, true)
+        return () => document.removeEventListener('keydown', onKey, true)
+      }, [plan, onCancel])
+      if (plan === null) return null
+      const first = plan.plans[0]
+      const name = first.workspace !== null && typeof first.workspace.title === 'string' && first.workspace.title
+        ? first.workspace.title
+        : (first.workspace !== null ? first.workspace.path : '')
+      const many = plan.plans.length > 1
+      return h('div', {
+        className: 'dsm-scrim',
+        onMouseDown: event => { if (event.target === event.currentTarget) onCancel() },
+      },
+        h('div', {
+          className: 'dsm-dialog', role: 'dialog', 'aria-modal': 'true',
+          'aria-label': t('merge.title'),
+        },
+          h('h3', null, h(Icon, { name: 'folder', size: 16 }), t('merge.title')),
+          h('p', null, many
+            ? t('merge.bodyMany', { n: plan.plans.length })
+            : t('merge.body', { path: first.record.path || '', name: name || '—', n: first.count })),
+          many
+            ? h('div', { className: 'dsm-dlist' },
+              plan.plans.slice(0, 5).map(entry => h('div', { className: 'dsm-dli', key: entry.record.id },
+                h(Icon, { name: 'eyeOff', size: 12 }),
+                h('span', { className: 'nm', title: entry.record.path }, entry.record.path || entry.record.title),
+                h('span', { className: 'sz' }, t('merge.count', { n: entry.count })))),
+              plan.plans.length > 5 ? h('div', { className: 'dsm-dli' }, h('span', { className: 'nm' }, t('delete.more', { n: plan.plans.length - 5 }))) : null)
+            : null,
+          h('div', { className: 'dsm-dwarn' },
+            h(Icon, { name: 'warn', size: 13, style: { flex: 'none', marginTop: '2px' } }),
+            h('span', null, many ? t('merge.warnMany') : t('merge.warn'))),
+          h('div', { className: 'dsm-dactions' },
+            h('button', { type: 'button', className: 'dsm-btn', onClick: onCancel }, t('merge.cancel')),
+            h('button', {
+              type: 'button', className: 'dsm-btn is-solid', disabled: busy === true, onClick: onConfirm,
+            }, t('merge.confirm')))))
+    }
+
     function createPage(ctx, translate) {
       /**
        * Resolve a client service through the guarded lookup.
@@ -1523,6 +1639,14 @@ window.__ModuleLoader__.load({
         const [deleteAck, setDeleteAck] = useState(false)
         const [deleteCount, setDeleteCount] = useState('')
         const [deletedIds, setDeletedIds] = useState(() => new Set())
+        /**
+         * Pending restores whose path already carries a workspace: the Host
+         * answered `needsConfirm` and the page asks before merging, because the
+         * old record would otherwise attach its sessions to a workspace the user
+         * created for something else.
+         * `{ plans: [{ record, workspace, count }], restorable: boolean }`
+         */
+        const [mergePlan, setMergePlan] = useState(null)
         const [now, setNow] = useState(() => Date.now())
         /** Read once, then kept in step: native controls (dropdown popups,
             scrollbars) and the light-scheme colours follow it. */
@@ -1588,6 +1712,11 @@ window.__ModuleLoader__.load({
           () => new Set(Array.isArray(workspaces.archivedSessionIds) ? workspaces.archivedSessionIds : []),
           [workspaces.archivedSessionIds])
         const hiddenSet = useMemo(() => new Set(hiddenRecords.map(record => record.id)), [hiddenRecords])
+        /** Paths that a registered workspace already owns, for the merge hint. */
+        const livePaths = useMemo(() => {
+          const items = Array.isArray(workspaces.items) ? workspaces.items : []
+          return new Set(items.map(workspace => pathKey(workspace.path)))
+        }, [workspaces.items])
 
         /** Workspace groups in registry order plus the ungrouped bucket. */
         const groups = useMemo(() => {
@@ -1855,16 +1984,75 @@ window.__ModuleLoader__.load({
           }
         }, [applyHiddenRecords, hiddenRecords, scope, showToast, t])
 
-        /** Re-register the workspace at its path and re-attach its sessions. */
-        const restoreHidden = useCallback(async record => {
-          try {
-            await requestRestore(record)
-            applyHiddenRecords(hiddenRecords.filter(entry => entry.id !== record.id))
-            showToast(t('toast.restored', { name: record.title || record.path }))
-          } catch (error) {
-            showToast((error && error.message) || String(error))
+        /** Drop one record from the stored hidden list (functional, so a batch
+            of restores never works from a stale snapshot). */
+        const forgetHidden = useCallback(record => {
+          setHiddenRecords(previous => {
+            const next = previous.filter(entry => entry.id !== record.id)
+            writeJson(LS_HIDDEN, next)
+            return next
+          })
+        }, [])
+
+        /**
+         * Restore hidden records, asking first when a path is already taken.
+         *
+         * Non-conflicting records are restored immediately; conflicts are
+         * collected into one merge prompt so "全部恢复" never turns into a
+         * stack of dialogs.
+         */
+        const restoreMany = useCallback(async records => {
+          if (records.length === 0) return
+          setBusy(true)
+          const plans = []
+          let restored = 0
+          for (const record of records) {
+            try {
+              const result = await requestRestore(record, false)
+              if (result !== null && typeof result === 'object' && result.needsConfirm === true) {
+                plans.push({ record, workspace: result.workspace || null, count: result.candidates || 0 })
+                continue
+              }
+              forgetHidden(record)
+              restored += 1
+            } catch (error) {
+              showToast((error && error.message) || String(error))
+            }
           }
-        }, [applyHiddenRecords, hiddenRecords, showToast, t])
+          setBusy(false)
+          if (plans.length > 0) {
+            if (restored > 0) showToast(t('toast.restoredBulk', { n: restored }))
+            setMergePlan({ plans, restored })
+            return
+          }
+          if (restored === 1) showToast(t('toast.restored', { name: recordName(records[0]) }))
+          else if (restored > 1) showToast(t('toast.restoredBulk', { n: restored }))
+        }, [forgetHidden, showToast, t])
+
+        /** Restore one record; the merge prompt appears when its path is taken. */
+        const restoreHidden = useCallback(record => restoreMany([record]), [restoreMany])
+
+        /** User agreed: attach the recorded sessions to the workspace already there. */
+        const confirmMerge = useCallback(async () => {
+          const plan = mergePlan
+          if (plan === null) return
+          setMergePlan(null)
+          setBusy(true)
+          let done = 0
+          let attached = 0
+          for (const entry of plan.plans) {
+            try {
+              const result = await requestRestore(entry.record, true)
+              forgetHidden(entry.record)
+              done += 1
+              if (result !== null && typeof result === 'object' && typeof result.attached === 'number') attached += result.attached
+            } catch (error) {
+              showToast((error && error.message) || String(error))
+            }
+          }
+          setBusy(false)
+          if (done > 0) showToast(t('toast.merged', { n: attached, name: recordName(plan.plans[0].record) }))
+        }, [forgetHidden, mergePlan, showToast, t])
 
         /** Run one mutation per id, sequentially, and report failures together. */
         const runEach = useCallback(async (ids, mutate) => {
@@ -2569,21 +2757,29 @@ window.__ModuleLoader__.load({
                     h('span', { className: 'sp' },
                       h('button', {
                         type: 'button',
-                        onClick: () => { for (const record of hiddenRecords) restoreHidden(record) },
+                        onClick: () => restoreMany(hiddenRecords),
                       }, t('tree.restore')))),
-                  hiddenRecords.map(record => h('div', { key: record.id, className: 'dsm-node is-hidden' },
-                    h('span', { className: 'dsm-caret' }),
-                    h('span', { className: 'dsm-node-ico' }, h(Icon, { name: 'eyeOff', size: 14 })),
-                    h('span', { className: 'dsm-node-label', title: record.path }, record.path || record.title),
-                    h('span', { className: 'dsm-node-agg' },
-                      h('button', {
-                        type: 'button',
-                        style: {
-                          border: 0, background: 'none', font: 'inherit', fontSize: '11.5px',
-                          color: 'var(--dsw-alias-label-tertiary)', cursor: 'pointer',
-                        },
-                        onClick: () => restoreHidden(record),
-                      }, t('row.restoreWorkspace'))))))
+                  hiddenRecords.map(record => {
+                    // The folder may already be a workspace again (added by hand
+                    // after hiding): say so before the restore turns into a merge.
+                    const taken = livePaths.has(pathKey(record.path))
+                    return h('div', { key: record.id, className: 'dsm-node is-hidden' },
+                      h('span', { className: 'dsm-caret' }),
+                      h('span', { className: 'dsm-node-ico' }, h(Icon, { name: 'eyeOff', size: 14 })),
+                      h('span', { className: 'dsm-node-label', title: record.path }, record.path || record.title),
+                      h('span', { className: 'dsm-node-agg' },
+                        taken
+                          ? h('span', { className: 'dsm-node-tag', title: t('tree.mergeHint') }, t('tree.willMerge'))
+                          : null,
+                        h('button', {
+                          type: 'button',
+                          style: {
+                            border: 0, background: 'none', font: 'inherit', fontSize: '11.5px',
+                            color: 'var(--dsw-alias-label-tertiary)', cursor: 'pointer',
+                          },
+                          onClick: () => restoreHidden(record),
+                        }, t('row.restoreWorkspace'))))
+                  }))
                 : null),
 
             h('section', { className: 'dsm-list', 'aria-label': t('page.title'), ref: listRef },
@@ -2683,6 +2879,13 @@ window.__ModuleLoader__.load({
               onClose: () => setColumnPanel(null),
             })
             : null,
+          h(MergeDialog, {
+            t,
+            plan: mergePlan,
+            busy,
+            onConfirm: confirmMerge,
+            onCancel: () => setMergePlan(null),
+          }),
           h(DeleteDialog, {
             t,
             target: deleteTarget,

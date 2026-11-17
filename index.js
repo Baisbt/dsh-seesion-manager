@@ -305,17 +305,49 @@ async function hideWorkspace(ctx, id) {
 /**
  * Restore a hidden workspace: re-register it at its path, re-attach its sessions
  * and clear their archive state.
+ *
+ * A hidden record can outlive the workspace's absence: the user may have added
+ * the same directory again in the meantime. `create` already resolves by
+ * canonical path and would silently return that new workspace, which turns a
+ * "restore" into a merge the caller never agreed to — so the merge is answered
+ * separately and has to be confirmed first.
+ *
  * @param ctx - Host context.
  * @param request - The record `hideWorkspace` returned.
- * @returns `{ ok: true, id, attached }`.
+ * @param confirmMerge - When true, an existing workspace at that path is reused
+ *   and the recorded sessions are attached to it.
+ * @returns `{ needsConfirm, workspace, candidates }` when a confirmation is
+ *   required, otherwise `{ id, title, attached, merged }`.
  */
-async function restoreWorkspace(ctx, request) {
+async function restoreWorkspace(ctx, request, confirmMerge = false) {
   if (typeof request.path !== 'string' || request.path.length === 0) {
     return { ok: false, code: 'bad-record', message: 'the stored record has no path' }
   }
-  const workspace = await ctx.workspaceRegistry.create(request.path, typeof request.title === 'string' ? request.title : undefined)
+  const sessionIds = (Array.isArray(request.sessionIds) ? request.sessionIds : [])
+    .filter(id => typeof id === 'string' && id.length > 0)
+  /** A workspace may already own this directory; a missing path throws and is
+      left to `create` so the caller gets the Host's own reason. */
+  let existing
+  try {
+    existing = await ctx.workspaceRegistry.resolveByPath(request.path)
+  } catch {
+    existing = undefined
+  }
+  if (existing !== undefined && confirmMerge !== true) {
+    return {
+      ok: true,
+      value: {
+        needsConfirm: true,
+        workspace: { id: existing.id, path: existing.path, title: existing.title },
+        candidates: sessionIds.length,
+      },
+    }
+  }
+  const workspace = existing !== undefined
+    ? existing
+    : await ctx.workspaceRegistry.create(request.path, typeof request.title === 'string' ? request.title : undefined)
   let attached = 0
-  for (const sessionId of Array.isArray(request.sessionIds) ? request.sessionIds : []) {
+  for (const sessionId of sessionIds) {
     try {
       await workspace.attachSession(sessionId)
       attached += 1
@@ -328,7 +360,16 @@ async function restoreWorkspace(ctx, request) {
       // Already normal.
     }
   }
-  return { ok: true, id: workspace.id, attached }
+  return {
+    ok: true,
+    value: {
+      id: workspace.id,
+      title: workspace.title,
+      attached,
+      merged: existing !== undefined,
+      total: sessionIds.length,
+    },
+  }
 }
 
 /**
@@ -431,9 +472,10 @@ export function apply(ctx) {
 
   postRoute(RESTORE_PATH, async body => {
     const record = body && typeof body.record === 'object' && body.record !== null ? body.record : {}
-    const result = await restoreWorkspace(ctx, record)
+    const confirmMerge = body !== null && typeof body === 'object' && body.confirmMerge === true
+    const result = await restoreWorkspace(ctx, record, confirmMerge)
     return result.ok === true
-      ? { ok: true, value: { id: result.id, attached: result.attached } }
+      ? { ok: true, value: result.value }
       : { ok: false, error: { code: result.code, message: result.message } }
   })
 }
