@@ -124,11 +124,22 @@ let listRefreshes = 0
 const sessionList = {
   refresh() { listRefreshes += 1; return Promise.resolve() },
 }
+/** The client Workspace service: the watcher subscribes to it. */
+let workspaceItems = []
+const workspaceListeners = new Set()
+const workspaceService = {
+  getSnapshot: () => ({ items: workspaceItems, archivedSessionIds: [], pinnedSessionIds: [], state: 'ready', phase: 'ready', error: null }),
+  subscribe(listener) {
+    workspaceListeners.add(listener)
+    return () => { workspaceListeners.delete(listener) }
+  },
+}
 const ctx = {
   effect(callback, label) { const dispose = callback(); effects.push({ label, dispose }); return () => {} },
   get(name) {
     if (name === 'locale') return locale
     if (name === 'sessions') return sessionList
+    if (name === 'workspaces') return workspaceService
     return undefined
   },
   locale,
@@ -155,6 +166,15 @@ if (main.length !== 1) throw new Error('expected one main registration, got ' + 
 if (panellist[0].options.id !== main[0].options.key) throw new Error('row id and main key must match')
 console.log('✓ slots: sidebar.panellist(id=' + panellist[0].options.id + ') + main(key=' + main[0].options.key + ')')
 if (typeof panellist[0].options.label() !== 'string') throw new Error('label thunk must return a string')
+
+/* the merge offer lives in the frame overlay: no panel owns it, which is what
+   lets it appear right after a workspace is added in the native sidebar */
+const overlay = bySlot('shell.overlay')
+if (overlay.length !== 1) throw new Error('expected one shell.overlay registration, got ' + overlay.length)
+if (overlay[0].options.id !== 'dsh-session-manager.merge-offer') {
+  throw new Error('the overlay registration needs its own id, got ' + overlay[0].options.id)
+}
+console.log('✓ slots: shell.overlay(id=' + overlay[0].options.id + ') carries the merge offer')
 
 /* ── fake session + workspace snapshots (shapes copied from the host contracts) ── */
 const now = Date.now()
@@ -796,14 +816,15 @@ globalThis.fetch = (url, options) => {
   let payload = { ok: true, value: {} }
   if (target.endsWith('/restore')) {
     restoreBodies.push(body)
+    const sessionIds = body && body.record && Array.isArray(body.record.sessionIds) ? body.record.sessionIds : []
     payload = body.confirmMerge === true
-      ? { ok: true, value: { id: 'w-1', title: 'DeepSeek Harness', attached: 2, merged: true, total: 2 } }
+      ? { ok: true, value: { id: 'w-1', title: 'DeepSeek Harness', attached: sessionIds.length, merged: true, total: sessionIds.length } }
       : {
         ok: true,
         value: {
           needsConfirm: true,
           workspace: { id: 'w-1', path: 'D:\\AI\\DeepSeek Harness', title: 'DeepSeek Harness' },
-          candidates: 2,
+          candidates: sessionIds.length,
         },
       }
   }
@@ -877,5 +898,60 @@ walk(mergeTree, ({ node }) => {
 })
 if (afterDialog !== null) throw new Error('the merge prompt must close after confirming')
 console.log('✓ merge: taken path is marked, restore asks first, confirming sends confirmMerge and clears the record')
+
+/* ── adding a workspace asks on the spot, without opening the page ──
+   The native picker has no hook, so the watcher follows the Workspace service:
+   a workspace id it has never seen, on a path a hidden record still holds, is
+   exactly the case the overlay offer exists for. */
+const NEW_PATH = 'D:\\AI\\All-Test'
+store.clear()
+store.set('dsh-session-manager:hidden-workspaces:v2', JSON.stringify([{
+  id: 'w-hidden-2',
+  path: NEW_PATH,
+  title: 'ALL-TEST',
+  sessionIds: ['session-3dcfed4d-0000-4000-8000-000000000001'],
+}]))
+restoreBodies.length = 0
+
+// the services sees the world it already knew first, then the user's new folder
+workspaceItems.length = 0
+workspaceItems.push(...workspaces.items)
+for (const listener of [...workspaceListeners]) listener()
+workspaceItems.push({
+  workspaceId: 'w-new', path: NEW_PATH, title: 'ALL-TEST', sessionIds: [], createdAt: '', updatedAt: '',
+})
+for (const listener of [...workspaceListeners]) listener()
+
+const Offer = overlay[0].component
+currentHooks = []
+hookIndex = 0
+let offerTree = Offer({})
+if (offerTree === null) throw new Error('a new workspace on a hidden path must raise an offer')
+const offerText = collectText(offerTree).join(' | ')
+if (!offerText.includes('ALL-TEST') || !offerText.includes(NEW_PATH)) {
+  throw new Error('the offer must name the workspace and its path, got ' + offerText)
+}
+if (!offerText.includes('1')) throw new Error('the offer must count the sessions that would join, got ' + offerText)
+
+const offerButton = (() => {
+  let found = null
+  walk(offerTree, ({ node }) => {
+    if (found !== null || node === undefined || node.props === undefined) return
+    if (String(node.props.className || '') === 'dsm-btn is-solid') found = node
+  })
+  return found
+})()
+if (offerButton === null) throw new Error('the offer has no merge button')
+await offerButton.props.onClick()
+if (restoreBodies.length !== 1 || restoreBodies[0].confirmMerge !== true) {
+  throw new Error('the overlay merge must ask the Host to confirm the merge')
+}
+const remainingHidden = JSON.parse(store.get('dsh-session-manager:hidden-workspaces:v2') || '[]')
+if (remainingHidden.length !== 0) throw new Error('a merged record must leave the hidden list')
+hookIndex = 0
+offerTree = Offer({})
+const doneText = collectText(offerTree).join(' | ')
+if (!doneText.includes('已合并 1 个会话')) throw new Error('the offer must report the merge, got ' + doneText)
+console.log('✓ overlay: a newly added workspace offers the merge, and takes it in place')
 
 console.log('\nsmoke: OK')

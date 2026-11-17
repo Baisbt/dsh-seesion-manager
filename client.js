@@ -48,6 +48,8 @@ window.__ModuleLoader__.load({
     const STYLE_KEY = 'dsh-session-manager/client.css'
     /** Checkbox column width; the rest come from the user's column config. */
     const SELECT_WIDTH = 22
+    /** How long the watcher ignores a path right after our own restore created it. */
+    const SUPPRESS_MS = 15000
 
     /**
      * Column defaults. `width` is the starting width in px; the session column is
@@ -248,6 +250,13 @@ window.__ModuleLoader__.load({
         'merge.warnMany': '原来的工作区标识都不会恢复，会话会分别归属各自的现有工作区。',
         'merge.confirm': '合并并恢复',
         'merge.cancel': '取消',
+        'offer.title': '发现可合并的会话',
+        'offer.body': '「{path}」曾是隐藏的工作区，它有 {n} 个会话可以并入刚添加的工作区「{name}」。',
+        'offer.merge': '合并',
+        'offer.dismiss': '暂不',
+        'offer.close': '关闭',
+        'offer.done': '已合并 {n} 个会话',
+        'offer.failed': '合并失败：{reason}',
         'toast.deleted': '已永久删除 {n} 个会话',
         'toast.deleteFailed': '{n} 个会话未删除：{reason}',
         'toast.deleteBlocked': '{n} 个会话仍在本窗口打开，无法删除；重启 DSH 后再试',
@@ -381,6 +390,13 @@ window.__ModuleLoader__.load({
         'merge.warnMany': 'No original workspace identity is restored; each record’s sessions join its existing workspace.',
         'merge.confirm': 'Merge and restore',
         'merge.cancel': 'Cancel',
+        'offer.title': 'Sessions can join this workspace',
+        'offer.body': '“{path}” was a hidden workspace; its {n} sessions can be merged into the workspace “{name}” you just added.',
+        'offer.merge': 'Merge',
+        'offer.dismiss': 'Not now',
+        'offer.close': 'Close',
+        'offer.done': 'Merged {n} sessions',
+        'offer.failed': 'Merge failed: {reason}',
         'toast.deleted': 'Deleted {n} sessions permanently',
         'toast.deleteFailed': '{n} sessions were not deleted: {reason}',
         'toast.deleteBlocked': '{n} sessions are still open in this window and cannot be deleted; restart DSH and try again',
@@ -832,6 +848,27 @@ window.__ModuleLoader__.load({
 /* A disabled affordance must still look disabled inside a row. */
 .dsm-row .dsm-actions .dsm-ico-btn:disabled { opacity: .3; }
 
+/* frame-wide merge offer (shell.overlay: no panel owns it) */
+.dsm-offer {
+  position: fixed; right: 18px; bottom: 18px; z-index: 60;
+  width: 340px; max-width: calc(100vw - 36px);
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 14px; border-radius: var(--dsw-radius-md, 12px);
+  background: var(--dsw-alias-bg-layer-3);
+  border: 1px solid var(--dsw-alias-border-l2);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12.5px; line-height: 1.5;
+}
+.dsm-offer.is-done, .dsm-offer.is-error {
+  flex-direction: row; align-items: center; gap: 8px; width: auto; max-width: 380px;
+}
+.dsm-offer.is-error { color: var(--dsw-alias-state-error-primary); }
+.dsm-offer-head { display: flex; align-items: center; gap: 6px; color: var(--dsw-alias-label-secondary); }
+.dsm-offer-head .ttl { font-weight: 600; color: var(--dsw-alias-label-primary); }
+.dsm-offer-body { color: var(--dsw-alias-label-secondary); }
+.dsm-offer-foot { display: flex; justify-content: flex-end; gap: 8px; }
+
 /* batch bar */
 .dsm-batch {
   display: flex; align-items: center; gap: 10px;
@@ -967,6 +1004,79 @@ window.__ModuleLoader__.load({
 
     function writeJson(key, value) {
       try { window.localStorage.setItem(key, JSON.stringify(value)) } catch { /* private mode */ }
+    }
+
+    /**
+     * Hidden-workspace records, shared between the two surfaces that touch them.
+     *
+     * The management page owns the list, but the frame-wide watcher has to offer
+     * a merge the moment a workspace is added — long before the page is open.
+     * Both go through here so they cannot drift, and the page can tell the
+     * watcher to ignore the workspaces its own restores create.
+     */
+    const hiddenChannel = {
+      listeners: new Set(),
+      /** pathKey → expiry (ms). A new workspace on this path is ours, not the user's. */
+      suppressed: new Map(),
+      subscribe(listener) {
+        this.listeners.add(listener)
+        return () => { this.listeners.delete(listener) }
+      },
+      notify() {
+        for (const listener of this.listeners) listener()
+      },
+      /** Stored records, filtered to the ones a restore could use. */
+      read() {
+        const stored = readJson(LS_HIDDEN, [])
+        return Array.isArray(stored) ? stored.filter(entry => entry && typeof entry.id === 'string') : []
+      },
+      write(records) {
+        writeJson(LS_HIDDEN, records)
+        this.notify()
+      },
+      /**
+       * Ignore new workspaces on `path` for a while (a restore just created one).
+       * @returns Release function for the failure path, where a later genuine
+       *   creation on the same path should be offered again.
+       */
+      suppress(path) {
+        const key = pathKey(path)
+        this.suppressed.set(key, Date.now() + SUPPRESS_MS)
+        return () => { this.suppressed.delete(key) }
+      },
+      isSuppressed(path) {
+        const key = pathKey(path)
+        const until = this.suppressed.get(key)
+        if (until === undefined) return false
+        if (until < Date.now()) { this.suppressed.delete(key); return false }
+        return true
+      },
+    }
+
+    /**
+     * Merge offers waiting to be shown by the frame-wide watcher. A queue, not a
+     * flag: adding two workspaces in a row must not lose the first question.
+     */
+    const mergeOffers = {
+      queue: [],
+      listeners: new Set(),
+      subscribe(listener) {
+        this.listeners.add(listener)
+        return () => { this.listeners.delete(listener) }
+      },
+      emit() {
+        for (const listener of this.listeners) listener()
+      },
+      push(offer) {
+        this.queue.push(offer)
+        this.emit()
+      },
+      /** Drop the head offer (answered, dismissed, or gone stale). */
+      shift() {
+        const next = this.queue.shift()
+        this.emit()
+        return next
+      },
     }
 
     /**
@@ -1550,6 +1660,77 @@ window.__ModuleLoader__.load({
             }, t('merge.confirm')))))
     }
 
+    /**
+     * Frame-wide merge offer.
+     *
+     * Registered on `shell.overlay`, so it appears wherever the user is — the
+     * point is that adding a workspace in the native sidebar is enough, with no
+     * trip to the management page. It answers the same question the page's merge
+     * dialog asks, just earlier.
+     */
+    function createMergeOffer(ctx, translate) {
+      return function MergeOffer() {
+        const [tick, setTick] = useState(0)
+        const [busy, setBusy] = useState(false)
+        const [done, setDone] = useState(null)
+        const [error, setError] = useState(null)
+        useEffect(() => mergeOffers.subscribe(() => setTick(value => value + 1)), [])
+        useEffect(() => {
+          if (done === null && error === null) return undefined
+          const timer = window.setTimeout(() => { setDone(null); setError(null) }, 3200)
+          return () => window.clearTimeout(timer)
+        }, [done, error])
+        const t = translate
+        const offer = mergeOffers.queue[0] || null
+
+        if (done !== null) {
+          return h('div', { className: 'dsm-offer is-done' },
+            h(Icon, { name: 'archive', size: 14 }),
+            h('span', null, t('offer.done', { n: done })))
+        }
+        if (error !== null) {
+          return h('div', { className: 'dsm-offer is-error' },
+            h(Icon, { name: 'warn', size: 14 }),
+            h('span', null, error),
+            h('button', { type: 'button', className: 'dsm-btn is-quiet', onClick: () => setError(null) }, t('offer.close')))
+        }
+        if (offer === null) return null
+
+        const count = offer.records.reduce((total, record) => total + (Array.isArray(record.sessionIds) ? record.sessionIds.length : 0), 0)
+        const name = offer.workspace.title || workspaceLabel(offer.workspace.path, '')
+        const accept = async () => {
+          const current = mergeOffers.queue[0]
+          if (current === undefined) return
+          setBusy(true)
+          const liveIds = new Set(hiddenChannel.read().map(record => record.id))
+          const records = current.records.filter(record => liveIds.has(record.id))
+          let attached = 0
+          const failures = []
+          for (const record of records) {
+            try {
+              const value = await requestRestore(record, true)
+              if (value !== null && typeof value === 'object' && typeof value.attached === 'number') attached += value.attached
+              hiddenChannel.write(hiddenChannel.read().filter(entry => entry.id !== record.id))
+            } catch (cause) {
+              failures.push((cause && cause.message) || String(cause))
+            }
+          }
+          setBusy(false)
+          mergeOffers.shift()
+          if (failures.length > 0) setError(t('offer.failed', { reason: failures[0] }))
+          else setDone(attached)
+        }
+        return h('div', { className: 'dsm-offer', role: 'status' },
+          h('div', { className: 'dsm-offer-head' },
+            h(Icon, { name: 'folder', size: 14 }),
+            h('span', { className: 'ttl' }, t('offer.title'))),
+          h('div', { className: 'dsm-offer-body' }, t('offer.body', { path: offer.workspace.path, name: name || '—', n: count })),
+          h('div', { className: 'dsm-offer-foot' },
+            h('button', { type: 'button', className: 'dsm-btn is-quiet', disabled: busy, onClick: () => mergeOffers.shift() }, t('offer.dismiss')),
+            h('button', { type: 'button', className: 'dsm-btn is-solid', disabled: busy, onClick: accept }, t('offer.merge'))))
+      }
+    }
+
     function createPage(ctx, translate) {
       /**
        * Resolve a client service through the guarded lookup.
@@ -1964,9 +2145,16 @@ window.__ModuleLoader__.load({
 
         /** Persist the hidden records (they carry everything a restore needs). */
         const applyHiddenRecords = useCallback(records => {
-          writeJson(LS_HIDDEN, records)
+          hiddenChannel.write(records)
           setHiddenRecords(records)
         }, [])
+
+        // The frame-wide watcher can merge a record while this page is open (or
+        // on another panel); follow the shared list instead of a stale copy.
+        useEffect(() => hiddenChannel.subscribe(() => {
+          const stored = hiddenChannel.read()
+          setHiddenRecords(previous => (JSON.stringify(previous) === JSON.stringify(stored) ? previous : stored))
+        }), [])
 
         /**
          * Hide a workspace: the Host archives its sessions and unregisters it, so
@@ -1989,7 +2177,7 @@ window.__ModuleLoader__.load({
         const forgetHidden = useCallback(record => {
           setHiddenRecords(previous => {
             const next = previous.filter(entry => entry.id !== record.id)
-            writeJson(LS_HIDDEN, next)
+            hiddenChannel.write(next)
             return next
           })
         }, [])
@@ -1999,7 +2187,9 @@ window.__ModuleLoader__.load({
          *
          * Non-conflicting records are restored immediately; conflicts are
          * collected into one merge prompt so "全部恢复" never turns into a
-         * stack of dialogs.
+         * stack of dialogs. A successful restore creates a workspace, which the
+         * frame-wide watcher would otherwise read as "the user just added this
+         * folder" and ask about again — hence the suppression on that path.
          */
         const restoreMany = useCallback(async records => {
           if (records.length === 0) return
@@ -2007,15 +2197,18 @@ window.__ModuleLoader__.load({
           const plans = []
           let restored = 0
           for (const record of records) {
+            const release = hiddenChannel.suppress(record.path)
             try {
               const result = await requestRestore(record, false)
               if (result !== null && typeof result === 'object' && result.needsConfirm === true) {
+                release()
                 plans.push({ record, workspace: result.workspace || null, count: result.candidates || 0 })
                 continue
               }
               forgetHidden(record)
               restored += 1
             } catch (error) {
+              release()
               showToast((error && error.message) || String(error))
             }
           }
@@ -2974,6 +3167,49 @@ window.__ModuleLoader__.load({
           locale: NS,
         }, Page))
 
+        // Frame-wide merge offer: adding a workspace in the native sidebar is
+        // enough to be asked whether a hidden record's sessions should join it.
+        // No panel owns this, which is exactly why it rides `shell.overlay`.
+        const MergeOffer = createMergeOffer(ctx, translate)
+        ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+          name: 'shell.overlay',
+          id: 'dsh-session-manager.merge-offer',
+          order: 60,
+        }, MergeOffer))
+
+        /**
+         * Watch for workspaces that appear after start and match a hidden
+         * record's path. Only genuinely new ids count: the first snapshot is
+         * the world as it already was, and a change here means the user just
+         * added a directory (the native picker has no hook we could intercept).
+         */
+        ctx.effect(() => {
+          const workspaces = typeof ctx.get === 'function' ? ctx.get('workspaces') : undefined
+          if (workspaces === undefined || typeof workspaces.subscribe !== 'function') return () => {}
+          const seen = new Set()
+          let primed = false
+          const inspect = () => {
+            const snapshot = typeof workspaces.getSnapshot === 'function' ? workspaces.getSnapshot() : null
+            const items = snapshot !== null && Array.isArray(snapshot.items) ? snapshot.items : []
+            if (primed !== true) {
+              for (const item of items) seen.add(item.workspaceId)
+              primed = true
+              return
+            }
+            for (const item of items) {
+              if (seen.has(item.workspaceId)) continue
+              seen.add(item.workspaceId)
+              if (hiddenChannel.isSuppressed(item.path)) continue
+              const records = hiddenChannel.read().filter(record => pathKey(record.path) === pathKey(item.path))
+              if (records.length === 0) continue
+              mergeOffers.push({ workspace: item, records })
+            }
+          }
+          const unsubscribe = workspaces.subscribe(inspect)
+          inspect()
+          return () => unsubscribe()
+        }, 'dsh-session-manager: workspace merge watcher')
+
         // Sidebar menu icons. The trash rides a `danger` row, so it inherits the
         // error colour through currentColor; the eye sits on a normal row and
         // keeps the label colour. Never a hex.
@@ -2998,7 +3234,7 @@ window.__ModuleLoader__.load({
           const stored = readJson(LS_HIDDEN, [])
           const list = Array.isArray(stored) ? stored.filter(entry => entry && entry.id !== record.id) : []
           list.push(record)
-          writeJson(LS_HIDDEN, list)
+          hiddenChannel.write(list)
         }
         if (contextMenus !== undefined && typeof contextMenus.register === 'function') {
           ctx.effect(() => contextMenus.register({
